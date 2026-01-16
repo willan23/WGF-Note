@@ -1,0 +1,25 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm.
+app/(tabs)/index.tsx(152,15): error TS2322: Type '{ html: string; language: CodeLanguage; }' is not assignable to type 'IntrinsicAttributes & WebViewPreviewProps'.
+  Property 'html' does not exist on type 'IntrinsicAttributes & WebViewPreviewProps'.
+components/split-view.tsx(75,37): error TS2339: Property 'accent' does not exist on type 'RuntimePalette'.
+components/split-view.tsx(104,27): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: ViewProps): View', gave the following error.
+    Type '{ width: number | undefined; height: number | undefined; backgroundColor: string; cursor: "col-resize" | "row-resize"; }' is not assignable to type 'StyleProp<ViewStyle>'.
+      Type '{ width: number | undefined; height: number | undefined; backgroundColor: string; cursor: "col-resize" | "row-resize"; }' is not assignable to type 'ViewStyle'.
+        Types of property 'cursor' are incompatible.
+          Type '"col-resize" | "row-resize"' is not assignable to type 'CursorValue | undefined'.
+            Type '"col-resize"' is not assignable to type 'CursorValue | undefined'.
+  Overload 2 of 2, '(props: ViewProps, context: any): View', gave the following error.
+    Type '{ width: number | undefined; height: number | undefined; backgroundColor: string; cursor: "col-resize" | "row-resize"; }' is not assignable to type 'StyleProp<ViewStyle>'.
+      Type '{ width: number | undefined; height: number | undefined; backgroundColor: string; cursor: "col-resize" | "row-resize"; }' is not assignable to type 'ViewStyle'.
+        Types of property 'cursor' are incompatible.
+          Type '"col-resize" | "row-resize"' is not assignable to type 'CursorValue | undefined'.
+            Type '"col-resize"' is not assignable to type 'CursorValue | undefined'.
+lib/file-system-manager.ts(18,27): error TS2694: Namespace '"W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index"' has no exported member 'EncodingType'.
+lib/file-system-manager.ts(22,34): error TS2339: Property 'documentDirectory' does not exist on type 'typeof import("W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index")'.
+lib/file-system-manager.ts(51,57): error TS2339: Property 'EncodingType' does not exist on type 'typeof import("W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index")'.
+lib/file-system-manager.ts(68,34): error TS2339: Property 'EncodingType' does not exist on type 'typeof import("W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index")'.
+lib/file-system-manager.ts(94,28): error TS2339: Property 'size' does not exist on type 'FileInfo'.
+  Property 'size' does not exist on type '{ exists: false; uri: string; isDirectory: false; }'.
+lib/file-system-manager.ts(95,40): error TS2339: Property 'modificationTime' does not exist on type 'FileInfo'.
+  Property 'modificationTime' does not exist on type '{ exists: false; uri: string; isDirectory: false; }'.
