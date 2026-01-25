@@ -1,23 +1,47 @@
-import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl } from 'react-native';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
-
-interface FileItem {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-}
-
-const MOCK_FILES: FileItem[] = [
-  { id: '1', name: 'main.py', type: 'file' },
-  { id: '2', name: 'utils.py', type: 'file' },
-  { id: '3', name: 'config.py', type: 'file' },
-  { id: '4', name: 'tests', type: 'folder' },
-  { id: '5', name: 'data', type: 'folder' },
-];
+import { useEffect, useState, useCallback } from 'react';
+import { listFiles, FileInfo } from '@/lib/file-system-manager';
+import { useEditor } from '@/lib/editor-context';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 export default function FilesScreen() {
   const colors = useColors();
+  const { openFileFromSystem } = useEditor();
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadFiles = useCallback(async () => {
+    try {
+      const allFiles = await listFiles();
+      setFiles(allFiles);
+    } catch (error) {
+      console.error('Erro ao carregar ficheiros:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadFiles();
+    setRefreshing(false);
+  }, [loadFiles]);
+
+  const handleFilePress = async (file: FileInfo) => {
+    if (!file.isDirectory) {
+      try {
+        await openFileFromSystem(file.uri);
+        router.push('/(tabs)');
+      } catch (error) {
+        console.error('Erro ao abrir ficheiro:', error);
+      }
+    }
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -25,59 +49,86 @@ export default function FilesScreen() {
       backgroundColor: colors.background,
     },
     header: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
     },
     headerText: {
-      fontSize: 18,
-      fontWeight: '600',
+      fontSize: 20,
+      fontWeight: '700',
       color: colors.foreground,
     },
     fileItem: {
       flexDirection: 'row',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       alignItems: 'center',
     },
-    fileIcon: {
-      fontSize: 20,
-      marginRight: 12,
-      width: 24,
+    fileIconContainer: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 14,
     },
     fileName: {
-      fontSize: 14,
+      fontSize: 15,
       color: colors.foreground,
       flex: 1,
+      fontWeight: '500',
+    },
+    fileSize: {
+      fontSize: 11,
+      color: colors.muted,
+      marginTop: 2,
     },
     emptyState: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: 16,
+      paddingHorizontal: 40,
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: 16,
       color: colors.muted,
       textAlign: 'center',
+      marginTop: 12,
     },
   });
 
-  const renderFileItem = ({ item }: { item: FileItem }) => (
+  const renderFileItem = ({ item }: { item: FileInfo }) => (
     <Pressable
       style={({ pressed }) => [
         styles.fileItem,
         pressed && { backgroundColor: colors.surface },
       ]}
+      onPress={() => handleFilePress(item)}
     >
-      <Text style={styles.fileIcon}>
-        {item.type === 'file' ? '📄' : '📁'}
-      </Text>
-      <Text style={styles.fileName}>{item.name}</Text>
+      <View style={styles.fileIconContainer}>
+        <Ionicons
+          name={item.isDirectory ? "folder" : "document-text"}
+          size={22}
+          color={item.isDirectory ? colors.warning : colors.primary}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.fileName}>{item.name}</Text>
+        {!item.isDirectory && (
+          <Text style={styles.fileSize}>
+            {(item.size / 1024).toFixed(1)} KB • {item.modificationTime ? new Date(item.modificationTime).toLocaleDateString() : 'N/A'}
+          </Text>
+        )}
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={colors.border} />
     </Pressable>
   );
 
@@ -85,23 +136,38 @@ export default function FilesScreen() {
     <ScreenContainer className="flex-1 p-0">
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerText}>Ficheiros do Projeto</Text>
+          <Text style={styles.headerText}>Ficheiros</Text>
+          <Pressable onPress={onRefresh}>
+            <Ionicons name="refresh" size={20} color={colors.primary} />
+          </Pressable>
         </View>
-        {MOCK_FILES.length > 0 ? (
+        {files.length > 0 ? (
           <FlatList
-            data={MOCK_FILES}
+            data={files}
             renderItem={renderFileItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.uri}
             scrollEnabled
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+            }
           />
         ) : (
           <View style={styles.emptyState}>
+            <Ionicons name="folder-open-outline" size={64} color={colors.border} />
             <Text style={styles.emptyText}>
-              Nenhum ficheiro encontrado
+              Nenhum ficheiro encontrado no diretório de projetos
             </Text>
+            <Pressable
+              onPress={onRefresh}
+              style={{ marginTop: 20, padding: 10, backgroundColor: colors.primary, borderRadius: 8 }}
+            >
+              <Text style={{ color: colors.background, fontWeight: '600' }}>Atualizar</Text>
+            </Pressable>
           </View>
         )}
       </View>
     </ScreenContainer>
   );
 }
+

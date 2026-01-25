@@ -12,15 +12,15 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import {
-  getAllFiles,
-  deleteFile,
-  getRecentFiles,
-  PersistedFile,
-} from '@/lib/file-persistence';
+  listFiles,
+  deleteFileOrDirectory,
+  FileInfo,
+} from '@/lib/file-system-manager';
+import { getRecentFiles, RecentFile } from '@/lib/recent-files-manager';
 
 interface FileManagerProps {
   visible: boolean;
-  onSelectFile: (file: PersistedFile) => void;
+  onSelectFile: (file: FileInfo | RecentFile) => void;
   onCreateNew: (name: string) => void;
   onClose: () => void;
 }
@@ -34,8 +34,8 @@ export function FileManager({
   onClose,
 }: FileManagerProps) {
   const colors = useColors();
-  const [files, setFiles] = useState<PersistedFile[]>([]);
-  const [recentFiles, setRecentFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [newFileName, setNewFileName] = useState('');
   const [showNewFileInput, setShowNewFileInput] = useState(false);
@@ -47,28 +47,36 @@ export function FileManager({
   }, [visible]);
 
   const loadFiles = async () => {
-    const allFiles = await getAllFiles();
-    const recent = await getRecentFiles();
-    setFiles(allFiles);
-    setRecentFiles(recent);
+    try {
+      const allFiles = await listFiles();
+      const recent = await getRecentFiles();
+      setFiles(allFiles);
+      setRecentFiles(recent);
+    } catch (error) {
+      console.error('Erro ao carregar ficheiros:', error);
+    }
   };
 
   const handleDeleteFile = useCallback(
-    (fileId: string, fileName: string) => {
+    (path: string, fileName: string) => {
       Alert.alert(
         'Eliminar Ficheiro',
         `Tem a certeza que deseja eliminar "${fileName}"?`,
         [
           {
             text: 'Cancelar',
-            onPress: () => {},
+            onPress: () => { },
             style: 'cancel',
           },
           {
             text: 'Eliminar',
             onPress: async () => {
-              await deleteFile(fileId);
-              await loadFiles();
+              try {
+                await deleteFileOrDirectory(path);
+                await loadFiles();
+              } catch (error) {
+                console.error('Erro ao eliminar:', error);
+              }
             },
             style: 'destructive',
           },
@@ -234,15 +242,13 @@ export function FileManager({
     },
   });
 
-  const displayFiles =
-    activeTab === 'all'
-      ? files
-      : files.filter(f =>
-          recentFiles.some(rf => rf.id === f.id)
-        );
-
-  const renderFileItem = ({ item }: { item: PersistedFile }) => {
-    const date = new Date(item.lastModified).toLocaleDateString('pt-PT');
+  const renderFileItem = ({ item }: { item: FileInfo | RecentFile }) => {
+    const isRecent = 'lastOpened' in item;
+    const path = isRecent ? (item as RecentFile).path : (item as FileInfo).uri;
+    const name = item.name;
+    const modificationTime = isRecent ? (item as RecentFile).lastOpened : (item as FileInfo).modificationTime;
+    const date = modificationTime ? new Date(modificationTime).toLocaleDateString('pt-PT') : 'N/A';
+    const language = isRecent ? (item as RecentFile).language : '';
 
     return (
       <Pressable
@@ -253,19 +259,21 @@ export function FileManager({
         }}
       >
         <View style={styles.fileInfo}>
-          <Text style={styles.fileName}>{item.name}</Text>
+          <Text style={styles.fileName}>{name}</Text>
           <Text style={styles.fileDetails}>
-            {item.language.toUpperCase()} • {date}
+            {language ? `${language.toUpperCase()} • ` : ''}{date}
           </Text>
         </View>
-        <View style={styles.fileActions}>
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => handleDeleteFile(item.id, item.name)}
-          >
-            <Text style={styles.actionText}>🗑️</Text>
-          </Pressable>
-        </View>
+        {!isRecent && (
+          <View style={styles.fileActions}>
+            <Pressable
+              style={styles.actionButton}
+              onPress={() => handleDeleteFile(path, name)}
+            >
+              <Text style={styles.actionText}>🗑️</Text>
+            </Pressable>
+          </View>
+        )}
       </Pressable>
     );
   };
@@ -354,22 +362,34 @@ export function FileManager({
             </Pressable>
           </View>
 
-          {displayFiles.length > 0 ? (
-            <FlatList
-              data={displayFiles}
-              renderItem={renderFileItem}
-              keyExtractor={item => item.id}
-              scrollEnabled={true}
-              showsVerticalScrollIndicator={false}
-            />
+          {activeTab === 'all' ? (
+            files.length > 0 ? (
+              <FlatList
+                data={files}
+                renderItem={renderFileItem}
+                keyExtractor={item => item.uri}
+                scrollEnabled={true}
+                showsVerticalScrollIndicator={false}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>Nenhum ficheiro criado ainda</Text>
+              </View>
+            )
           ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>
-                {activeTab === 'all'
-                  ? 'Nenhum ficheiro criado ainda'
-                  : 'Nenhum ficheiro recente'}
-              </Text>
-            </View>
+            recentFiles.length > 0 ? (
+              <FlatList
+                data={recentFiles}
+                renderItem={renderFileItem}
+                keyExtractor={item => item.id}
+                scrollEnabled={true}
+                showsVerticalScrollIndicator={false}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>Nenhum ficheiro recente</Text>
+              </View>
+            )
           )}
         </View>
       </View>

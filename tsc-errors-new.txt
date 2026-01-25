@@ -1,0 +1,13 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm.
+
+> note-py-plus-plus@1.0.0 check
+> tsc --noEmit
+
+lib/file-system-manager.ts(18,27): error TS2694: Namespace '"W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index"' has no exported member 'EncodingType'.
+lib/file-system-manager.ts(22,34): error TS2339: Property 'documentDirectory' does not exist on type 'typeof import("W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index")'.
+lib/file-system-manager.ts(51,57): error TS2339: Property 'EncodingType' does not exist on type 'typeof import("W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index")'.
+lib/file-system-manager.ts(68,34): error TS2339: Property 'EncodingType' does not exist on type 'typeof import("W:/Projetos/python-notepad-plus-plus-mobile (1)/node_modules/expo-file-system/build/index")'.
+lib/file-system-manager.ts(94,28): error TS2339: Property 'size' does not exist on type 'FileInfo'.
+  Property 'size' does not exist on type '{ exists: false; uri: string; isDirectory: false; }'.
+lib/file-system-manager.ts(95,40): error TS2339: Property 'modificationTime' does not exist on type 'FileInfo'.
+  Property 'modificationTime' does not exist on type '{ exists: false; uri: string; isDirectory: false; }'.

@@ -1,23 +1,20 @@
 import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
-
-interface Symbol {
-  id: string;
-  name: string;
-  type: 'function' | 'class' | 'variable';
-  line: number;
-}
-
-const MOCK_SYMBOLS: Symbol[] = [
-  { id: '1', name: 'main', type: 'function', line: 1 },
-  { id: '2', name: 'MyClass', type: 'class', line: 10 },
-  { id: '3', name: 'helper_function', type: 'function', line: 25 },
-  { id: '4', name: 'CONFIG', type: 'variable', line: 5 },
-];
+import { useEditor } from '@/lib/editor-context';
+import { extractPythonSymbols } from '@/lib/python-analyzer';
+import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
+import { router } from 'expo-router';
 
 export default function SymbolsScreen() {
   const colors = useColors();
+  const { state, setCursorPosition } = useEditor();
+
+  const symbols = useMemo(() => {
+    if (!state.currentFile) return [];
+    return extractPythonSymbols(state.currentFile.content);
+  }, [state.currentFile?.content]);
 
   const styles = StyleSheet.create({
     container: {
@@ -25,79 +22,100 @@ export default function SymbolsScreen() {
       backgroundColor: colors.background,
     },
     header: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     headerText: {
-      fontSize: 18,
-      fontWeight: '600',
+      fontSize: 20,
+      fontWeight: '700',
       color: colors.foreground,
     },
     symbolItem: {
       flexDirection: 'row',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       alignItems: 'center',
     },
-    symbolIcon: {
-      fontSize: 16,
+    symbolIconContainer: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
       marginRight: 12,
-      width: 24,
     },
     symbolName: {
-      fontSize: 14,
+      fontSize: 15,
       color: colors.foreground,
       flex: 1,
-      fontWeight: '500',
+      fontWeight: '600',
     },
     symbolLine: {
       fontSize: 12,
-      color: colors.muted,
-      marginLeft: 8,
+      color: colors.primary,
+      backgroundColor: `${colors.primary}15`,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 4,
     },
     emptyState: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: 16,
+      paddingHorizontal: 40,
     },
     emptyText: {
-      fontSize: 14,
+      fontSize: 16,
       color: colors.muted,
       textAlign: 'center',
+      marginTop: 12,
     },
   });
 
-  const getSymbolIcon = (type: string) => {
+  const getSymbolIconInfo = (type: string) => {
     switch (type) {
       case 'function':
-        return 'ƒ';
+        return { name: 'code-outline' as const, color: colors.success };
       case 'class':
-        return 'C';
+        return { name: 'cube-outline' as const, color: colors.primary };
       case 'variable':
-        return 'v';
+        return { name: 'at-outline' as const, color: colors.warning };
+      case 'import':
+        return { name: 'download-outline' as const, color: colors.error };
       default:
-        return '•';
+        return { name: 'ellipse-outline' as const, color: colors.muted };
     }
   };
 
-  const renderSymbolItem = ({ item }: { item: Symbol }) => (
-    <Pressable
-      style={({ pressed }) => [
-        styles.symbolItem,
-        pressed && { backgroundColor: colors.surface },
-      ]}
-    >
-      <Text style={styles.symbolIcon}>{getSymbolIcon(item.type)}</Text>
-      <Text style={styles.symbolName}>{item.name}</Text>
-      <Text style={styles.symbolLine}>Linha {item.line}</Text>
-    </Pressable>
-  );
+  const handleSymbolPress = (line: number) => {
+    setCursorPosition(line - 1, 0);
+    router.push('/(tabs)');
+  };
+
+  const renderSymbolItem = ({ item, index }: { item: any, index: number }) => {
+    const iconInfo = getSymbolIconInfo(item.type);
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.symbolItem,
+          pressed && { backgroundColor: colors.surface },
+        ]}
+        onPress={() => handleSymbolPress(item.line)}
+      >
+        <View style={styles.symbolIconContainer}>
+          <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
+        </View>
+        <Text style={styles.symbolName}>{item.name}</Text>
+        <Text style={styles.symbolLine}>L{item.line}</Text>
+      </Pressable>
+    );
+  };
 
   return (
     <ScreenContainer className="flex-1 p-0">
@@ -105,17 +123,19 @@ export default function SymbolsScreen() {
         <View style={styles.header}>
           <Text style={styles.headerText}>Símbolos</Text>
         </View>
-        {MOCK_SYMBOLS.length > 0 ? (
+        {symbols.length > 0 ? (
           <FlatList
-            data={MOCK_SYMBOLS}
+            data={symbols}
             renderItem={renderSymbolItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) => `${item.name}-${item.line}-${index}`}
             scrollEnabled
+            showsVerticalScrollIndicator={false}
           />
         ) : (
           <View style={styles.emptyState}>
+            <Ionicons name="search-outline" size={64} color={colors.border} />
             <Text style={styles.emptyText}>
-              Nenhum símbolo encontrado
+              Nenhum símbolo encontrado no ficheiro atual
             </Text>
           </View>
         )}
@@ -123,3 +143,4 @@ export default function SymbolsScreen() {
     </ScreenContainer>
   );
 }
+

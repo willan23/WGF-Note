@@ -6,7 +6,9 @@ import {
   ActivityIndicator,
   ScrollView,
   Pressable,
+  Platform,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useColors } from '@/hooks/use-colors';
 import {
   generateWebViewHTML,
@@ -187,6 +189,25 @@ export function WebViewPreview({
     setConsoleLogs([]);
   };
 
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (message.type === 'console-log' || message.type === 'console-error') {
+          setConsoleLogs(prev => [...prev.slice(-49), message.data]);
+          onConsoleLog?.(message.data);
+        }
+      } catch (e) {
+        // Not JSON
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onConsoleLog]);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -231,19 +252,55 @@ export function WebViewPreview({
             </Text>
           </View>
         ) : (
-          <View style={styles.previewPlaceholder}>
-            <Text style={styles.placeholderText}>
-              {language === 'html'
-                ? 'Pré-visualização de HTML/CSS'
-                : 'Pré-visualização de CSS'}
-            </Text>
-            <Text style={styles.placeholderText}>
-              WebView nativa será renderizada aqui
-            </Text>
-            <Text style={[styles.placeholderText, { fontSize: 11, color: colors.muted }]}>
-              (Integração com react-native-webview)
-            </Text>
-          </View>
+          Platform.OS === 'web' ? (
+            <iframe
+              title="preview"
+              srcDoc={generateWebViewHTML(
+                language === 'html' ? code : '',
+                language === 'css' ? code : '',
+                '',
+                { enableJavaScript: true, enableConsole: true }
+              )}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                backgroundColor: colors.background,
+              }}
+            />
+          ) : (
+            <WebView
+              key={code.length + language} // Forçar re-renderização quando código muda
+              source={{
+                html: generateWebViewHTML(
+                  language === 'html' ? code : '',
+                  language === 'css' ? code : '',
+                  '',
+                  { enableJavaScript: true, enableConsole: true }
+                )
+              }}
+              style={styles.content}
+              onMessage={(event: any) => {
+                try {
+                  const message = JSON.parse(event.nativeEvent.data);
+                  if (message.type === 'console-log' || message.type === 'console-error') {
+                    setConsoleLogs(prev => [...prev.slice(-49), message.data]);
+                    onConsoleLog?.(message.data);
+                  }
+                } catch (e) {
+                  // Not a JSON message or not from our console mock
+                }
+              }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator color={colors.primary} size="large" />
+                </View>
+              )}
+            />
+          )
         )}
       </View>
 

@@ -1,6 +1,5 @@
-import { View } from "react-native";
+import { View, StyleSheet, Platform } from "react-native";
 import { useState, useCallback } from "react";
-import { ScreenContainer } from "@/components/screen-container";
 import { CodeEditor } from "@/components/code-editor";
 import { EditorToolbar } from "@/components/editor-toolbar";
 import { EditorStatusBar } from "@/components/editor-status-bar";
@@ -10,15 +9,18 @@ import { CodeExecutionPanel } from "@/components/code-execution-panel";
 import { CodeSuggestions } from "@/components/code-suggestions";
 import { CodeTemplates } from "@/components/code-templates";
 import { LanguageSelector } from "@/components/language-selector";
-import { EditorPreviewSplit } from "@/components/split-view";
+import { EditorPreviewSplit, useSplitView } from "@/components/split-view";
 import { WebViewPreview } from "@/components/webview-preview";
+import { FileManager } from "@/components/file-manager";
 import { EditorProvider, useEditor } from "@/lib/editor-context";
+import { formatCode } from "@/lib/code-formatter";
 import { detectSyntaxErrors } from "@/lib/python-analyzer";
 import { detectHTMLErrors } from "@/lib/html-analyzer";
 import { detectCSSErrors } from "@/lib/css-analyzer";
-import * as FileSystemManager from "@/lib/file-system-manager";
+import { useColors } from "@/hooks/use-colors";
 
 function EditorScreenContent() {
+  const colors = useColors();
   const {
     createNewFile,
     openFile,
@@ -33,164 +35,139 @@ function EditorScreenContent() {
     canRedo,
     updateFileContent,
   } = useEditor();
+
   const [syntaxErrors, setSyntaxErrors] = useState<any[]>([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showExecutionPanel, setShowExecutionPanel] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [showFileManager, setShowFileManager] = useState(false);
+  const { isPreviewVisible, togglePreview } = useSplitView();
 
   const handleNew = useCallback(() => {
-    const newFile = createNewFile(`script_${Date.now()}.py`);
+    const ext = currentLanguage === 'python' ? 'py' : currentLanguage;
+    const newFile = createNewFile(`script_${Date.now()}.${ext}`);
     openFile(newFile);
-  }, [createNewFile, openFile]);
+  }, [createNewFile, openFile, currentLanguage]);
 
   const handleOpen = useCallback(async () => {
-    try {
-      // Listar ficheiros disponíveis
-      const files = await FileSystemManager.listFiles();
-      // TODO: Mostrar diálogo de seleção (por agora, abrir o primeiro ficheiro)
-      if (files.length > 0) {
-        await openFileFromSystem(files[0].uri);
-      }
-    } catch (error) {
-      console.error('Erro ao abrir ficheiro:', error);
-    }
-  }, [openFileFromSystem]);
+    setShowFileManager(true);
+  }, []);
 
   const handleSave = useCallback(async () => {
     try {
       await saveCurrentFile();
-      console.log('Ficheiro guardado com sucesso');
     } catch (error) {
       console.error('Erro ao guardar ficheiro:', error);
     }
   }, [saveCurrentFile]);
 
-  const handleUndo = useCallback(() => {
-    if (canUndo) {
-      undo();
+  const handleFormat = useCallback(() => {
+    if (state.currentFile) {
+      const formatted = formatCode(state.currentFile.content, currentLanguage);
+      updateFileContent(state.currentFile.id, formatted);
     }
-  }, [undo, canUndo]);
-
-  const handleRedo = useCallback(() => {
-    if (canRedo) {
-      redo();
-    }
-  }, [redo, canRedo]);
-
-  const handleSearch = useCallback(() => {
-    setShowSearchModal(true);
-  }, []);
-
-  const handleSettings = useCallback(() => {
-    // Navegar para tab de definições (já implementado via tabs)
-    console.log('Definições');
-  }, []);
-
-  const handleExecute = useCallback(() => {
-    setShowExecutionPanel(!showExecutionPanel);
-  }, [showExecutionPanel]);
-
-  const handleTemplates = useCallback(() => {
-    setShowTemplates(true);
-  }, []);
-
-  const handleSuggestions = useCallback(() => {
-    setShowSuggestions(true);
-  }, []);
-
-  const handleSelectTemplate = useCallback((template: any) => {
-    if (state.currentFile && template.code) {
-      // Inserir template no cursor atual
-      const { selectionStart } = state;
-      const newContent =
-        state.currentFile.content.substring(0, selectionStart) +
-        template.code +
-        state.currentFile.content.substring(selectionStart);
-
-      updateFileContent(state.currentFile.id, newContent);
-      setShowTemplates(false);
-    }
-  }, [state, updateFileContent]);
+  }, [state.currentFile, currentLanguage, updateFileContent]);
 
   const handleContentChange = useCallback((content: string) => {
     let errors: any[] = [];
-
-    if (currentLanguage === 'python') {
-      errors = detectSyntaxErrors(content);
-    } else if (currentLanguage === 'html') {
-      errors = detectHTMLErrors(content);
-    } else if (currentLanguage === 'css') {
-      errors = detectCSSErrors(content);
-    }
-
+    if (currentLanguage === 'python') errors = detectSyntaxErrors(content);
+    else if (currentLanguage === 'html') errors = detectHTMLErrors(content);
+    else if (currentLanguage === 'css') errors = detectCSSErrors(content);
     setSyntaxErrors(errors);
   }, [currentLanguage]);
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      flexDirection: 'column',
+    }
+  });
+
   return (
-    <ScreenContainer edges={["top", "left", "right"]} className="flex-1 p-0">
-      <View className="flex-1 flex-col">
-        <EditorToolbar
-          onNew={handleNew}
-          onOpen={handleOpen}
-          onSave={handleSave}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onSearch={handleSearch}
-          onSettings={handleSettings}
-          onExecute={handleExecute}
-          onTemplates={handleTemplates}
-          onSuggestions={handleSuggestions}
-          onLanguageSelect={() => setShowLanguageSelector(true)}
-        />
+    <View style={styles.container}>
+      {/* Editor Toolbar at the top */}
+      <EditorToolbar
+        onNew={handleNew}
+        onOpen={handleOpen}
+        onSave={handleSave}
+        onUndo={canUndo ? undo : undefined}
+        onRedo={canRedo ? redo : undefined}
+        onSearch={() => setShowSearchModal(true)}
+        onSettings={() => { }}
+        onExecute={() => setShowExecutionPanel(!showExecutionPanel)}
+        onTemplates={() => setShowTemplates(true)}
+        onSuggestions={() => setShowSuggestions(true)}
+        onLanguageSelect={() => setShowLanguageSelector(true)}
+        onFormat={handleFormat}
+        onPreview={togglePreview}
+        onFileManager={() => setShowFileManager(true)}
+      />
+
+      {/* Main content area */}
+      <View style={{ flex: 1, width: '100%' }}>
         <EditorPreviewSplit
           language={currentLanguage}
+          isPreviewVisible={isPreviewVisible}
+          onTogglePreview={togglePreview}
           editor={<CodeEditor onContentChange={handleContentChange} />}
           preview={
             <WebViewPreview
-              html={state.currentFile?.content || ''}
-              language={currentLanguage}
+              code={state.currentFile?.content || ''}
+              language={currentLanguage === 'python' ? 'html' : currentLanguage as any}
             />
           }
         />
-        {showExecutionPanel && (
-          <CodeExecutionPanel />
-        )}
-        {syntaxErrors.length > 0 && (
-          <SyntaxErrorsPanel errors={syntaxErrors} />
-        )}
-        <EditorStatusBar />
-        <SearchReplaceModal
-          visible={showSearchModal}
-          onClose={() => setShowSearchModal(false)}
-          onSearch={(query) => console.log('Pesquisar:', query)}
-          onReplace={(query, replacement) => console.log('Substituir:', query, replacement)}
-          onReplaceAll={(query, replacement) => console.log('Substituir tudo:', query, replacement)}
-        />
-        <CodeSuggestions
-          visible={showSuggestions}
-          code={state.currentFile?.content || ''}
-          line={state.cursorLine}
-          onSelectSuggestion={(suggestion) => console.log('Sugestão:', suggestion)}
-          onClose={() => setShowSuggestions(false)}
-        />
-        <CodeTemplates
-          visible={showTemplates}
-          onSelectTemplate={handleSelectTemplate}
-          onClose={() => setShowTemplates(false)}
-        />
-        <LanguageSelector
-          visible={showLanguageSelector}
-          currentLanguage={currentLanguage}
-          onSelectLanguage={(language) => {
-            setCurrentLanguage(language);
-            setShowLanguageSelector(false);
-          }}
-          onClose={() => setShowLanguageSelector(false)}
-        />
       </View>
-    </ScreenContainer>
+
+      {/* Conditional Panels */}
+      {showExecutionPanel && <CodeExecutionPanel />}
+      {syntaxErrors.length > 0 && <SyntaxErrorsPanel errors={syntaxErrors} />}
+
+      {/* Status Bar at the bottom */}
+      <EditorStatusBar />
+
+      {/* Modals */}
+      <SearchReplaceModal
+        visible={showSearchModal}
+        onClose={() => setShowSearchModal(false)}
+        onSearch={(query) => console.log('Searching:', query)}
+        onReplace={(q, r) => state.currentFile && updateFileContent(state.currentFile.id, state.currentFile.content.replace(q, r))}
+        onReplaceAll={(q, r) => state.currentFile && updateFileContent(state.currentFile.id, state.currentFile.content.split(q).join(r))}
+      />
+      <CodeSuggestions
+        visible={showSuggestions}
+        code={state.currentFile?.content || ''}
+        line={state.cursorLine}
+        onSelectSuggestion={(s) => state.currentFile && updateFileContent(state.currentFile.id, state.currentFile.content + s.text)}
+        onClose={() => setShowSuggestions(false)}
+      />
+      <CodeTemplates
+        visible={showTemplates}
+        onSelectTemplate={(t) => {
+          if (state.currentFile && t.code) {
+            const newContent = state.currentFile.content.substring(0, state.selectionStart) + t.code + state.currentFile.content.substring(state.selectionStart);
+            updateFileContent(state.currentFile.id, newContent);
+            setShowTemplates(false);
+          }
+        }}
+        onClose={() => setShowTemplates(false)}
+      />
+      <LanguageSelector
+        visible={showLanguageSelector}
+        currentLanguage={currentLanguage}
+        onSelectLanguage={(l) => { setCurrentLanguage(l); setShowLanguageSelector(false); }}
+        onClose={() => setShowLanguageSelector(false)}
+      />
+      <FileManager
+        visible={showFileManager}
+        onSelectFile={(f) => openFileFromSystem((f as any).uri || (f as any).path)}
+        onCreateNew={(n) => { const f = createNewFile(n); openFile(f); }}
+        onClose={() => setShowFileManager(false)}
+      />
+    </View>
   );
 }
 

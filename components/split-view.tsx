@@ -15,6 +15,8 @@ interface SplitViewProps {
     minRightWidth?: number;
     orientation?: 'horizontal' | 'vertical';
     showToggle?: boolean;
+    isPreviewVisible?: boolean;
+    onTogglePreview?: () => void;
 }
 
 export function SplitView({
@@ -25,10 +27,15 @@ export function SplitView({
     minRightWidth = 200,
     orientation = 'horizontal',
     showToggle = true,
+    isPreviewVisible: propsIsPreviewVisible,
+    onTogglePreview,
 }: SplitViewProps) {
     const colors = useColors();
     const [splitRatio, setSplitRatio] = useState(defaultSplitRatio);
-    const [isPreviewVisible, setIsPreviewVisible] = useState(true);
+    const [internalIsPreviewVisible, setInternalIsPreviewVisible] = useState(true);
+
+    const isPreviewVisible = propsIsPreviewVisible !== undefined ? propsIsPreviewVisible : internalIsPreviewVisible;
+    const togglePreview = onTogglePreview || (() => setInternalIsPreviewVisible(!internalIsPreviewVisible));
 
     const screenWidth = Dimensions.get('window').width;
     const screenHeight = Dimensions.get('window').height;
@@ -39,9 +46,7 @@ export function SplitView({
     const leftSize = isPreviewVisible ? totalSize * splitRatio : totalSize;
     const rightSize = isPreviewVisible ? totalSize * (1 - splitRatio) : 0;
 
-    const togglePreview = () => {
-        setIsPreviewVisible(!isPreviewVisible);
-    };
+
 
     const styles = StyleSheet.create({
         container: {
@@ -66,13 +71,12 @@ export function SplitView({
             width: isHorizontal ? 4 : undefined,
             height: isHorizontal ? undefined : 4,
             backgroundColor: colors.border,
-            cursor: isHorizontal ? 'col-resize' : 'row-resize',
         },
         toggleButton: {
             position: 'absolute',
             top: 10,
             right: 10,
-            backgroundColor: colors.accent,
+            backgroundColor: colors.primary,
             paddingHorizontal: 12,
             paddingVertical: 6,
             borderRadius: 4,
@@ -164,10 +168,14 @@ export function EditorPreviewSplit({
     editor,
     preview,
     language,
+    isPreviewVisible,
+    onTogglePreview,
 }: {
     editor: React.ReactNode;
     preview: React.ReactNode;
     language: string;
+    isPreviewVisible?: boolean;
+    onTogglePreview?: () => void;
 }) {
     const showPreview = language === 'html' || language === 'css';
 
@@ -183,6 +191,8 @@ export function EditorPreviewSplit({
             minLeftWidth={300}
             minRightWidth={200}
             showToggle={true}
+            isPreviewVisible={isPreviewVisible}
+            onTogglePreview={onTogglePreview}
         />
     );
 }

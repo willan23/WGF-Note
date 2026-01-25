@@ -6,10 +6,12 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
 import { executePythonCode, validatePythonCode, formatExecutionOutput } from '@/lib/python-executor';
+import { Ionicons } from '@expo/vector-icons';
 
 export function CodeExecutionPanel() {
   const colors = useColors();
@@ -35,7 +37,7 @@ export function CodeExecutionPanel() {
 
     setIsExecuting(true);
     setError('');
-    setOutput('Executando...');
+    setOutput('A preparar execução...\n');
 
     try {
       const result = await executePythonCode(code);
@@ -43,108 +45,148 @@ export function CodeExecutionPanel() {
       setOutput(formattedOutput);
 
       if (result.exitCode !== 0) {
-        setError(result.stderr);
+        setError(result.stderr || 'Erro desconhecido durante a execução');
       }
     } catch (err) {
-      setError(`Erro: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+      setError(`Erro do Sistema: ${err instanceof Error ? err.message : 'Erro fatal'}`);
     } finally {
       setIsExecuting(false);
     }
   };
 
+  const clearOutput = () => {
+    setOutput('');
+    setError('');
+  };
+
   const styles = StyleSheet.create({
     container: {
-      flex: 1,
-      backgroundColor: colors.background,
+      height: 250,
+      backgroundColor: '#000', // Terminal always dark
       borderTopWidth: 1,
-      borderTopColor: colors.border,
+      borderTopColor: '#333',
     },
     header: {
       flexDirection: 'row',
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: colors.surface,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: '#1a1a1a',
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: '#333',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    titleContainer: {
+      flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
     },
     title: {
       fontSize: 12,
-      fontWeight: '600',
-      color: colors.foreground,
+      fontWeight: '700',
+      color: '#aaa',
       textTransform: 'uppercase',
-      flex: 1,
+      letterSpacing: 1,
+    },
+    actions: {
+      flexDirection: 'row',
+      gap: 12,
+      alignItems: 'center',
+    },
+    actionButton: {
+      padding: 4,
     },
     executeButton: {
-      paddingHorizontal: 12,
+      paddingHorizontal: 14,
       paddingVertical: 6,
       backgroundColor: colors.primary,
-      borderRadius: 4,
+      borderRadius: 6,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
     },
     executeButtonText: {
       fontSize: 12,
-      color: colors.background,
-      fontWeight: '600',
+      color: '#fff',
+      fontWeight: '700',
     },
     content: {
       flex: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
     },
     output: {
-      fontSize: 11,
-      fontFamily: 'Menlo',
-      color: colors.foreground,
-      lineHeight: 16,
+      fontSize: 13,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      color: '#fff',
+      lineHeight: 18,
     },
     errorText: {
-      fontSize: 11,
-      fontFamily: 'Menlo',
-      color: colors.error,
-      lineHeight: 16,
+      fontSize: 13,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      color: '#ff5555',
+      lineHeight: 18,
+      marginTop: 8,
     },
     emptyState: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+      opacity: 0.5,
     },
     emptyText: {
       fontSize: 12,
-      color: colors.muted,
+      color: '#666',
       textAlign: 'center',
+      marginTop: 8,
     },
   });
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Saída</Text>
-        <Pressable
-          style={styles.executeButton}
-          onPress={handleExecuteCode}
-          disabled={isExecuting}
-        >
-          {isExecuting ? (
-            <ActivityIndicator size="small" color={colors.background} />
-          ) : (
-            <Text style={styles.executeButtonText}>▶ Executar</Text>
-          )}
-        </Pressable>
+        <View style={styles.titleContainer}>
+          <Ionicons name="terminal-outline" size={16} color={colors.primary} />
+          <Text style={styles.title}>Consola Python</Text>
+        </View>
+        <View style={styles.actions}>
+          <Pressable style={styles.actionButton} onPress={clearOutput}>
+            <Ionicons name="trash-outline" size={18} color="#666" />
+          </Pressable>
+          <Pressable
+            style={styles.executeButton}
+            onPress={handleExecuteCode}
+            disabled={isExecuting}
+          >
+            {isExecuting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="play" size={14} color="#fff" />
+                <Text style={styles.executeButtonText}>EXECUTAR</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
       </View>
 
-      <ScrollView style={styles.content}>
-        {error ? (
-          <Text style={styles.errorText}>{error}</Text>
-        ) : output ? (
-          <Text style={styles.output}>{output}</Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator>
+        {output || error ? (
+          <>
+            {output ? <Text style={styles.output}>{output}</Text> : null}
+            {error ? (
+              <View style={{ borderTopWidth: 1, borderTopColor: '#333', marginTop: 10, paddingTop: 10 }}>
+                <Text style={[styles.output, { color: '#ff5555', fontWeight: '700' }]}>STDERR:</Text>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+            <View style={{ height: 40 }} />
+          </>
         ) : (
           <View style={styles.emptyState}>
+            <Ionicons name="code-working-outline" size={48} color="#222" />
             <Text style={styles.emptyText}>
-              Clique em "Executar" para ver a saída do código
+              Aguardando comando...
             </Text>
           </View>
         )}
@@ -152,3 +194,4 @@ export function CodeExecutionPanel() {
     </View>
   );
 }
+

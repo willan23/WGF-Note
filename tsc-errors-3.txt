@@ -1,0 +1,8 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm.
+
+> note-py-plus-plus@1.0.0 check
+> tsc --noEmit
+
+lib/file-system-manager.ts(6,34): error TS2305: Module '"expo-file-system"' has no exported member 'EncodingType'.
+lib/file-system-manager.ts(97,44): error TS2339: Property 'modificationTime' does not exist on type 'Directory'.
+lib/file-system-manager.ts(247,39): error TS2339: Property 'modificationTime' does not exist on type 'Directory'.

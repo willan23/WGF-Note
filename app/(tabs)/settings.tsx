@@ -1,5 +1,4 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, Switch } from 'react-native';
-import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
 import { useState } from 'react';
@@ -15,208 +14,223 @@ export default function SettingsScreen() {
       backgroundColor: colors.background,
     },
     header: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 24,
       backgroundColor: colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
-    headerText: {
-      fontSize: 18,
-      fontWeight: '600',
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: '700',
       color: colors.foreground,
     },
+    headerSubtitle: {
+      fontSize: 14,
+      color: colors.muted,
+      marginTop: 4,
+    },
     section: {
-      paddingHorizontal: 16,
-      paddingVertical: 16,
+      paddingHorizontal: 20,
+      paddingVertical: 20,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     sectionTitle: {
-      fontSize: 14,
-      fontWeight: '600',
+      fontSize: 12,
+      fontWeight: '800',
       color: colors.primary,
-      marginBottom: 12,
+      marginBottom: 16,
       textTransform: 'uppercase',
+      letterSpacing: 1.2,
     },
     settingItem: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      paddingVertical: 14,
     },
-    settingLabel: {
-      fontSize: 14,
-      color: colors.foreground,
+    settingInfo: {
       flex: 1,
     },
-    settingValue: {
-      fontSize: 13,
-      color: colors.muted,
-      marginLeft: 8,
+    settingLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.foreground,
     },
-    button: {
+    settingDescription: {
+      fontSize: 12,
+      color: colors.muted,
+      marginTop: 2,
+    },
+    controls: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    controlButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    controlButtonText: {
+      fontSize: 20,
+      color: colors.foreground,
+      lineHeight: 24,
+    },
+    controlValue: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.foreground,
+      minWidth: 40,
+      textAlign: 'center',
+    },
+    pickerButton: {
       paddingHorizontal: 12,
       paddingVertical: 8,
-      backgroundColor: colors.primary,
-      borderRadius: 4,
-      marginLeft: 8,
+      borderRadius: 6,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
-    buttonText: {
-      fontSize: 12,
-      color: colors.background,
+    pickerButtonText: {
+      fontSize: 14,
       fontWeight: '600',
+      color: colors.foreground,
     },
   });
 
-  const handleThemeToggle = () => {
-    const newTheme = localSettings.theme === 'light' ? 'dark' : 'light';
-    setLocalSettings({ ...localSettings, theme: newTheme });
-    updateSettings({ theme: newTheme });
-  };
-
-  const handleFontSizeChange = (delta: number) => {
-    const newSize = Math.max(10, Math.min(24, localSettings.fontSize + delta));
-    setLocalSettings({ ...localSettings, fontSize: newSize });
-    updateSettings({ fontSize: newSize });
-  };
-
-  const handleIndentChange = (delta: number) => {
-    const newIndent = Math.max(2, Math.min(8, localSettings.indentSize + delta));
-    setLocalSettings({ ...localSettings, indentSize: newIndent });
-    updateSettings({ indentSize: newIndent });
-  };
-
-  const handleToggleSetting = (key: keyof typeof localSettings) => {
-    const newValue = !localSettings[key];
-    setLocalSettings({ ...localSettings, [key]: newValue });
-    updateSettings({ [key]: newValue });
+  const handleUpdate = (updates: Partial<typeof localSettings>) => {
+    const newSettings = { ...localSettings, ...updates };
+    setLocalSettings(newSettings);
+    updateSettings(updates);
   };
 
   return (
-    <ScreenContainer className="flex-1 p-0">
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerText}>Definições</Text>
-        </View>
-        <ScrollView>
-          {/* Tema */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Aparência</Text>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Tema</Text>
-              <Pressable
-                style={styles.button}
-                onPress={handleThemeToggle}
-              >
-                <Text style={styles.buttonText}>
-                  {localSettings.theme === 'light' ? '☀️ Claro' : '🌙 Escuro'}
-                </Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Definições</Text>
+        <Text style={styles.headerSubtitle}>Personalize sua experiência de desenvolvimento</Text>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* APARÊNCIA */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Aparência</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Tema do Editor</Text>
+              <Text style={styles.settingDescription}>Escolha entre modo claro ou escuro</Text>
+            </View>
+            <Pressable
+              style={styles.pickerButton}
+              onPress={() => handleUpdate({ theme: localSettings.theme === 'dark' ? 'light' : 'dark' })}
+            >
+              <Text style={styles.pickerButtonText}>
+                {localSettings.theme === 'dark' ? '🌙 Escuro' : '☀️ Claro'}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Tamanho da Fonte</Text>
+              <Text style={styles.settingDescription}>Ajuste a escala do texto no editor</Text>
+            </View>
+            <View style={styles.controls}>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ fontSize: Math.max(10, localSettings.fontSize - 1) })}>
+                <Text style={styles.controlButtonText}>−</Text>
+              </Pressable>
+              <Text style={styles.controlValue}>{localSettings.fontSize}px</Text>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ fontSize: Math.min(30, localSettings.fontSize + 1) })}>
+                <Text style={styles.controlButtonText}>+</Text>
               </Pressable>
             </View>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Tamanho da Fonte</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Pressable
-                  style={styles.button}
-                  onPress={() => handleFontSizeChange(-1)}
-                >
-                  <Text style={styles.buttonText}>−</Text>
-                </Pressable>
-                <Text style={[styles.settingValue, { marginLeft: 12, marginRight: 12 }]}>
-                  {localSettings.fontSize}px
-                </Text>
-                <Pressable
-                  style={styles.button}
-                  onPress={() => handleFontSizeChange(1)}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </Pressable>
-              </View>
+          </View>
+        </View>
+
+        {/* EDITOR */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Edição</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Indentação</Text>
+              <Text style={styles.settingDescription}>Número de espaços por tabulação</Text>
+            </View>
+            <View style={styles.controls}>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ indentSize: Math.max(2, localSettings.indentSize - 2) })}>
+                <Text style={styles.controlButtonText}>−</Text>
+              </Pressable>
+              <Text style={styles.controlValue}>{localSettings.indentSize}</Text>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ indentSize: Math.min(8, localSettings.indentSize + 2) })}>
+                <Text style={styles.controlButtonText}>+</Text>
+              </Pressable>
             </View>
           </View>
 
-          {/* Edição */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Edição</Text>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Tamanho de Indentação</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Pressable
-                  style={styles.button}
-                  onPress={() => handleIndentChange(-1)}
-                >
-                  <Text style={styles.buttonText}>−</Text>
-                </Pressable>
-                <Text style={[styles.settingValue, { marginLeft: 12, marginRight: 12 }]}>
-                  {localSettings.indentSize}
-                </Text>
-                <Pressable
-                  style={styles.button}
-                  onPress={() => handleIndentChange(1)}
-                >
-                  <Text style={styles.buttonText}>+</Text>
-                </Pressable>
-              </View>
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Números de Linha</Text>
+              <Text style={styles.settingDescription}>Mostrar contagem lateral no editor</Text>
             </View>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Usar Espaços</Text>
-              <Switch
-                value={localSettings.useSpaces}
-                onValueChange={() => handleToggleSetting('useSpaces')}
-              />
-            </View>
-            <View style={styles.settingItem}>
+            <Switch
+              value={localSettings.showLineNumbers}
+              onValueChange={(val) => handleUpdate({ showLineNumbers: val })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Word Wrap</Text>
-              <Switch
-                value={localSettings.wordWrap}
-                onValueChange={() => handleToggleSetting('wordWrap')}
-              />
+              <Text style={styles.settingDescription}>Quebra de linha automática</Text>
             </View>
+            <Switch
+              value={localSettings.wordWrap}
+              onValueChange={(val) => handleUpdate({ wordWrap: val })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+        </View>
+
+        {/* PERSISTÊNCIA */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sistema</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Auto-Save</Text>
+              <Text style={styles.settingDescription}>Guardar alterações automaticamente</Text>
+            </View>
+            <Switch
+              value={localSettings.autoSave}
+              onValueChange={(val) => handleUpdate({ autoSave: val })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
           </View>
 
-          {/* Exibição */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Exibição</Text>
+          {localSettings.autoSave && (
             <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Mostrar Números de Linha</Text>
-              <Switch
-                value={localSettings.showLineNumbers}
-                onValueChange={() => handleToggleSetting('showLineNumbers')}
-              />
-            </View>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Mostrar Espaços em Branco</Text>
-              <Switch
-                value={localSettings.showWhitespace}
-                onValueChange={() => handleToggleSetting('showWhitespace')}
-              />
-            </View>
-          </View>
-
-          {/* Guardar Automático */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Guardar Automático</Text>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Ativar Auto-Save</Text>
-              <Switch
-                value={localSettings.autoSave}
-                onValueChange={() => handleToggleSetting('autoSave')}
-              />
-            </View>
-            {localSettings.autoSave && (
-              <View style={styles.settingItem}>
+              <View style={styles.settingInfo}>
                 <Text style={styles.settingLabel}>Intervalo (ms)</Text>
-                <Text style={styles.settingValue}>
-                  {localSettings.autoSaveInterval}
-                </Text>
+                <Text style={styles.settingDescription}>Tempo entre gravações</Text>
               </View>
-            )}
-          </View>
-        </ScrollView>
-      </View>
-    </ScreenContainer>
+              <Text style={styles.controlValue}>{localSettings.autoSaveInterval}ms</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={{ padding: 40, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 12 }}>Python Notepad++ v1.0.0</Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }

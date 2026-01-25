@@ -49,19 +49,23 @@ export function generateWebViewHTML(
       console.log = function(...args) {
         window.consoleLogs.push(args.map(a => String(a)).join(' '));
         originalLog.apply(console, args);
-        window.parent.postMessage({
-          type: 'console-log',
-          data: args.map(a => String(a)).join(' ')
-        }, '*');
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'console-log',
+            data: args.map(a => String(a)).join(' ')
+          }));
+        }
       };
       
       console.error = function(...args) {
         window.consoleErrors.push(args.map(a => String(a)).join(' '));
         originalError.apply(console, args);
-        window.parent.postMessage({
-          type: 'console-error',
-          data: args.map(a => String(a)).join(' ')
-        }, '*');
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'console-error',
+            data: args.map(a => String(a)).join(' ')
+          }));
+        }
       };
     </script>
   `
@@ -114,22 +118,8 @@ export function generateWebViewHTML(
  * Sanitiza HTML para evitar injeção de código malicioso
  */
 function sanitizeHTML(html: string): string {
-  // Lista de tags permitidas
-  const allowedTags = [
-    'p', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'ul', 'ol', 'li', 'a', 'button', 'input', 'form', 'label',
-    'table', 'tr', 'td', 'th', 'thead', 'tbody', 'img', 'br',
-    'strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'blockquote',
-    'section', 'article', 'header', 'footer', 'nav', 'main',
-  ];
-
-  // Remover scripts e event handlers
-  let sanitized = html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/on\w+\s*=\s*[^\s>]*/gi, '');
-
-  return sanitized;
+  // Relaxed for local preview
+  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 }
 
 /**
@@ -218,10 +208,10 @@ export function validateHTML(html: string): { valid: boolean; errors: string[] }
     }
   }
 
-  // Verificar DOCTYPE
-  if (!html.match(/<!DOCTYPE\s+html>/i)) {
+  // Verificar DOCTYPE (Opcional no editor)
+  /* if (!html.match(/<!DOCTYPE\s+html>/i)) {
     errors.push('DOCTYPE não encontrado');
-  }
+  } */
 
   return {
     valid: errors.length === 0,
