@@ -18,10 +18,12 @@ export async function callDataApi(
   options: DataApiCallOptions = {},
 ): Promise<unknown> {
   if (!ENV.forgeApiUrl) {
-    throw new Error("BUILT_IN_FORGE_API_URL is not configured");
+    console.warn("BUILT_IN_FORGE_API_URL is not configured — callDataApi will return empty response");
+    return {};
   }
   if (!ENV.forgeApiKey) {
-    throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
+    console.warn("BUILT_IN_FORGE_API_KEY is not configured — callDataApi will return empty response");
+    return {};
   }
 
   // Build the full URL by appending the service path to the base URL

@@ -208,8 +208,11 @@ const resolveApiUrl = () =>
 
 const assertApiKey = () => {
   if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    console.warn("OPENAI_API_KEY is not configured — LLM will run in mock mode");
+    return false;
   }
+
+  return true;
 };
 
 const normalizeResponseFormat = ({
@@ -253,8 +256,40 @@ const normalizeResponseFormat = ({
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
+  const hasKey = assertApiKey();
 
+  if (!hasKey) {
+    // Provide a safe, deterministic mock response so the app can run without an external LLM
+    const lastUserMessage = [...(params.messages || [])].reverse().find((m) => m.role === 'user') || params.messages?.[params.messages.length - 1];
+    let text = 'Resposta mock: sem API configurada.';
+    if (lastUserMessage) {
+      if (typeof lastUserMessage.content === 'string') text = `Resposta mock: ${lastUserMessage.content}`;
+      else text = `Resposta mock: ${JSON.stringify(lastUserMessage.content)}`;
+    }
+
+    const mock: InvokeResult = {
+      id: `mock-${Date.now()}`,
+      created: Date.now(),
+      model: 'mock-llm',
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: text,
+          },
+          finish_reason: 'stop',
+        },
+      ],
+      usage: {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+      },
+    };
+
+    return mock;
+  }
   const {
     messages,
     tools,

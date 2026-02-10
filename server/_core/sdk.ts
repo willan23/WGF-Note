@@ -44,6 +44,18 @@ class OAuthService {
   }
 
   async getTokenByCode(code: string, state: string): Promise<ExchangeTokenResponse> {
+    // If OAuth server is not configured, return a deterministic mock token for local development
+    if (!ENV.oAuthServerUrl) {
+      return {
+        accessToken: `mock_access_${Date.now()}`,
+        tokenType: "Bearer",
+        expiresIn: 3600,
+        refreshToken: undefined,
+        scope: "",
+        idToken: "",
+      } as ExchangeTokenResponse;
+    }
+
     const payload: ExchangeTokenRequest = {
       clientId: ENV.appId,
       grantType: "authorization_code",
@@ -52,11 +64,22 @@ class OAuthService {
     };
 
     const { data } = await this.client.post<ExchangeTokenResponse>(EXCHANGE_TOKEN_PATH, payload);
-
     return data;
   }
 
   async getUserInfoByToken(token: ExchangeTokenResponse): Promise<GetUserInfoResponse> {
+    // If OAuth server is not configured, return a mock user for local development
+    if (!ENV.oAuthServerUrl) {
+      return {
+        openId: `mock_user_${Date.now()}`,
+        email: "dev@local",
+        name: "Local Dev",
+        platform: "email",
+        loginMethod: "email",
+        platforms: ["REGISTERED_PLATFORM_EMAIL"],
+      } as unknown as GetUserInfoResponse;
+    }
+
     const { data } = await this.client.post<GetUserInfoResponse>(GET_USER_INFO_PATH, {
       accessToken: token.accessToken,
     });
@@ -67,7 +90,7 @@ class OAuthService {
 
 const createOAuthHttpClient = (): AxiosInstance =>
   axios.create({
-    baseURL: ENV.oAuthServerUrl,
+    baseURL: ENV.oAuthServerUrl ?? undefined,
     timeout: AXIOS_TIMEOUT_MS,
   });
 

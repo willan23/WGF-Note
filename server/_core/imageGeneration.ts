@@ -32,11 +32,12 @@ export type GenerateImageResponse = {
 };
 
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
-  if (!ENV.forgeApiUrl) {
-    throw new Error("BUILT_IN_FORGE_API_URL is not configured");
-  }
-  if (!ENV.forgeApiKey) {
-    throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
+  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    console.warn("Image generation service not configured — returning mock image URL");
+    // 1x1 transparent PNG as data URL to keep UI working offline
+    const placeholder =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=";
+    return { url: placeholder };
   }
 
   // Build the full URL by appending the service path to the base URL

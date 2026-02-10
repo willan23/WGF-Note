@@ -13,7 +13,7 @@ import { useColors } from '@/hooks/use-colors';
 interface SearchReplaceModalProps {
   visible: boolean;
   onClose: () => void;
-  onSearch: (query: string) => void;
+  onSearch: (query: string) => number | Promise<number> | void;
   onReplace: (query: string, replacement: string) => void;
   onReplaceAll: (query: string, replacement: string) => void;
 }
@@ -30,10 +30,21 @@ export function SearchReplaceModal({
   const [replaceQuery, setReplaceQuery] = useState('');
   const [matchCount, setMatchCount] = useState(0);
 
-  const handleSearch = (text: string) => {
+  const handleSearch = async (text: string) => {
     setSearchQuery(text);
-    onSearch(text);
-    // TODO: Atualizar contagem de correspondências
+    try {
+      const result = onSearch(text as string) as number | Promise<number> | void;
+      if (typeof result === 'number') {
+        setMatchCount(result);
+      } else if (result && typeof (result as Promise<number>).then === 'function') {
+        const awaited = await (result as Promise<number>);
+        if (typeof awaited === 'number') setMatchCount(awaited);
+      } else {
+        setMatchCount(0);
+      }
+    } catch (err) {
+      setMatchCount(0);
+    }
   };
 
   const styles = StyleSheet.create({
