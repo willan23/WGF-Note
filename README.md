@@ -1,4 +1,4 @@
-# Note Py++
+# WGF Note
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, com foco atual em Android.
 

@@ -4,8 +4,10 @@ import { useColors } from '@/hooks/use-colors';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   getParentDirectoryUri,
-  getProjectsDirectoryUri,
+  isDesktopRuntime,
   listFiles,
+  pickFilesFromSystem,
+  pickProjectDirectoryFromSystem,
   type FileInfo,
 } from '@/lib/file-system-manager';
 import { useEditor } from '@/lib/editor-context';
@@ -14,8 +16,11 @@ import { router } from 'expo-router';
 
 export default function FilesScreen() {
   const colors = useColors();
-  const { openFileFromSystem } = useEditor();
-  const rootDirectoryUri = useMemo(() => getProjectsDirectoryUri(), []);
+  const {
+    openFileFromSystem,
+    workspaceRootUri: rootDirectoryUri,
+    setWorkspaceRootUri,
+  } = useEditor();
   const [currentDirectoryUri, setCurrentDirectoryUri] = useState(rootDirectoryUri);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,6 +36,10 @@ export default function FilesScreen() {
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
+
+  useEffect(() => {
+    setCurrentDirectoryUri(rootDirectoryUri);
+  }, [rootDirectoryUri]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -58,6 +67,23 @@ export default function FilesScreen() {
       setCurrentDirectoryUri(parent);
     }
   }, [currentDirectoryUri, rootDirectoryUri]);
+
+  const handleOpenWorkspace = useCallback(async () => {
+    const uri = await pickProjectDirectoryFromSystem();
+    if (!uri) return;
+
+    setWorkspaceRootUri(uri);
+    setCurrentDirectoryUri(uri);
+  }, [setWorkspaceRootUri]);
+
+  const handleImportFiles = useCallback(async () => {
+    const filesFromSystem = await pickFilesFromSystem();
+    const firstFile = filesFromSystem.find((file) => !file.isDirectory);
+    if (!firstFile) return;
+
+    await openFileFromSystem(firstFile.uri);
+    router.push('/(tabs)');
+  }, [openFileFromSystem]);
 
   const styles = useMemo(
     () =>
@@ -173,9 +199,21 @@ export default function FilesScreen() {
               <Ionicons name="arrow-up" size={20} color={colors.primary} />
             </Pressable>
             <Text style={styles.headerText}>Ficheiros</Text>
-            <Pressable onPress={onRefresh}>
-              <Ionicons name="refresh" size={20} color={colors.primary} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {isDesktopRuntime() ? (
+                <>
+                  <Pressable onPress={handleImportFiles}>
+                    <Ionicons name="document-attach-outline" size={20} color={colors.primary} />
+                  </Pressable>
+                  <Pressable onPress={handleOpenWorkspace}>
+                    <Ionicons name="folder-open-outline" size={20} color={colors.primary} />
+                  </Pressable>
+                </>
+              ) : null}
+              <Pressable onPress={onRefresh}>
+                <Ionicons name="refresh" size={20} color={colors.primary} />
+              </Pressable>
+            </View>
           </View>
           <Text style={styles.pathText}>{currentDirectoryUri}</Text>
         </View>

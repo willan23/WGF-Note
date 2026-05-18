@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
 import { listOllamaModels } from '@/lib/local-ai';
+import { isDesktopRuntime } from '@/lib/desktop-bridge';
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -177,6 +178,47 @@ export default function SettingsScreen() {
       Alert.alert(
         'Ligação falhou',
         error instanceof Error ? error.message : 'Não foi possível contactar a IA local.',
+      );
+    }
+  };
+
+  const handleAutoConfigureLocalAI = async () => {
+    const baseUrl = settings.localAiBaseUrl.trim() || 'http://127.0.0.1:11434';
+
+    try {
+      const models = await listOllamaModels(baseUrl);
+      if (models.length === 0) {
+        Alert.alert(
+          'Ollama encontrado',
+          'O servidor respondeu, mas ainda não há modelos instalados. Instale um modelo coder no Ollama e volte a tentar.',
+        );
+        handleUpdate({ localAiEnabled: true, localAiBaseUrl: baseUrl });
+        return;
+      }
+
+      const localModels = models.filter(
+        (item) => !`${item.name} ${item.model}`.toLocaleLowerCase().includes(':cloud'),
+      );
+      const candidateModels = localModels.length > 0 ? localModels : models;
+      const preferredModel =
+        candidateModels.find((item) => /coder|code|qwen/i.test(`${item.name} ${item.model}`)) ??
+        candidateModels[0];
+
+      handleUpdate({
+        localAiEnabled: true,
+        localAiBaseUrl: baseUrl,
+        localAiModel: preferredModel.name,
+      });
+      Alert.alert(
+        'IA local pronta',
+        `Configurado ${preferredModel.name}. Já podes conversar e pedir código no editor.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        'Não encontrei o Ollama',
+        error instanceof Error
+          ? `${error.message} No PC, confirme se o Ollama está aberto em ${baseUrl}.`
+          : 'Não foi possível configurar a IA local automaticamente.',
       );
     }
   };
@@ -349,11 +391,16 @@ export default function SettingsScreen() {
             <Pressable style={styles.inlineActionButton} onPress={handleTestLocalAI}>
               <Text style={styles.inlineActionText}>Testar ligação</Text>
             </Pressable>
+            {isDesktopRuntime() ? (
+              <Pressable style={styles.inlineActionButton} onPress={handleAutoConfigureLocalAI}>
+                <Text style={styles.inlineActionText}>Configurar automaticamente no PC</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Python Notepad++ v1.0.0</Text>
+          <Text style={styles.footerText}>WGF Note v1.0.0</Text>
         </View>
       </ScrollView>
     </View>

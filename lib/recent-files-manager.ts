@@ -168,7 +168,7 @@ export async function renameRecentPaths(
         const path = normalizedFilePath === normalizedOldPath
             ? normalizedNewPath
             : `${normalizedNewPath}${normalizedFilePath.slice(normalizedOldPath.length)}`;
-        const name = path.substring(path.lastIndexOf('/') + 1);
+        const name = decodeURIComponent(path.substring(path.lastIndexOf('/') + 1));
 
         return {
             ...file,

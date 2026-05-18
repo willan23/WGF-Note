@@ -29,7 +29,7 @@ await writeFile(
       name: rootPackage.name,
       version: rootPackage.version,
       description: 'Editor local-first de código para Android e desktop.',
-      author: 'Note Py++',
+      author: 'WGF Note',
       main: 'main.cjs',
       private: true,
     },

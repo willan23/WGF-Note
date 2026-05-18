@@ -2,6 +2,7 @@ import type { FileInfo } from './file-system-manager';
 import type { LocalAIWorkspaceMemoryNote } from './local-ai-memory';
 import { isSearchableWorkspaceFile, getWorkspaceRelativePath } from './workspace-search';
 import { detectLanguageFromExtension, type CodeLanguage } from './types-extended';
+import { getDesktopBridge } from './desktop-bridge';
 
 export interface LocalAIConfig {
   baseUrl: string;
@@ -261,6 +262,40 @@ export function getOllamaChatUrl(baseUrl: string): string {
 
 export function getOllamaTagsUrl(baseUrl: string): string {
   return `${normalizeBaseUrl(baseUrl)}/api/tags`;
+}
+
+async function requestOllamaJson<T>(
+  baseUrl: string,
+  endpoint: 'tags' | 'chat',
+  body?: unknown,
+): Promise<T> {
+  const bridge = getDesktopBridge();
+  if (bridge) {
+    return endpoint === 'tags'
+      ? ((await bridge.listOllamaModels(baseUrl)) as T)
+      : ((await bridge.ollamaChat(baseUrl, body)) as T);
+  }
+
+  const response = await fetch(
+    endpoint === 'tags' ? getOllamaTagsUrl(baseUrl) : getOllamaChatUrl(baseUrl),
+    endpoint === 'tags'
+      ? undefined
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      endpoint === 'tags'
+        ? 'Não foi possível contactar o Ollama.'
+        : 'A IA local não conseguiu responder.',
+    );
+  }
+
+  return (await response.json()) as T;
 }
 
 function assertConfigured(config: LocalAIConfig): void {
@@ -588,12 +623,7 @@ function overlapsSnippet(
 export async function listOllamaModels(baseUrl: string): Promise<OllamaModelInfo[]> {
   assertBaseUrl(baseUrl);
 
-  const response = await fetch(getOllamaTagsUrl(baseUrl));
-  if (!response.ok) {
-    throw new Error('Não foi possível contactar o Ollama.');
-  }
-
-  const payload = (await response.json()) as OllamaTagsResponse;
+  const payload = await requestOllamaJson<OllamaTagsResponse>(baseUrl, 'tags');
   return payload.models ?? [];
 }
 
@@ -603,10 +633,7 @@ export async function requestLocalAIExplanation(
 ): Promise<LocalAIExplanation> {
   assertConfigured(config);
 
-  const response = await fetch(getOllamaChatUrl(config.baseUrl), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const payload = await requestOllamaJson<OllamaChatResponse>(config.baseUrl, 'chat', {
       model: config.model.trim(),
       stream: false,
       format: explanationSchema,
@@ -621,14 +648,7 @@ export async function requestLocalAIExplanation(
           content: `${buildContextBlock(context)}\n\nExplica a seleção se existir; caso contrário, resume o ficheiro.`,
         },
       ],
-    }),
   });
-
-  if (!response.ok) {
-    throw new Error('A IA local não conseguiu responder.');
-  }
-
-  const payload = (await response.json()) as OllamaChatResponse;
   return parseStructuredContent<LocalAIExplanation>(payload.message?.content);
 }
 
@@ -638,18 +658,12 @@ export async function requestLocalAIEditProposal(
 ): Promise<LocalAIEditProposal> {
   assertConfigured(config);
 
-  if (!context.selectedText.trim()) {
-    throw new Error('Selecione código antes de pedir uma alteração.');
-  }
-
   if (!context.instruction?.trim()) {
     throw new Error('Escreva uma instrução para a alteração.');
   }
 
-  const response = await fetch(getOllamaChatUrl(config.baseUrl), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const hasSelection = Boolean(context.selectedText.trim());
+  const payload = await requestOllamaJson<OllamaChatResponse>(config.baseUrl, 'chat', {
       model: config.model.trim(),
       stream: false,
       format: editProposalSchema,
@@ -657,21 +671,16 @@ export async function requestLocalAIEditProposal(
         {
           role: 'system',
           content:
-            'És um assistente de programação. Propõe apenas a substituição da seleção recebida. Mantém a linguagem e devolve JSON válido segundo o schema.',
+            'És um assistente de programação. Mantém a linguagem e devolve JSON válido segundo o schema. Se existir seleção, replacement deve substituir apenas a seleção. Se não existir seleção, replacement deve ser código pronto para inserir no cursor atual e satisfazer o pedido sem reescrever desnecessariamente o ficheiro inteiro.',
         },
         {
           role: 'user',
-          content: `${buildContextBlock(context)}\n\nPedido: ${context.instruction}`,
+          content: `${buildContextBlock(context)}\n\nModo: ${
+            hasSelection ? 'substituir seleção' : 'inserir no cursor'
+          }\nPedido: ${context.instruction}`,
         },
       ],
-    }),
   });
-
-  if (!response.ok) {
-    throw new Error('A IA local não conseguiu gerar uma proposta.');
-  }
-
-  const payload = (await response.json()) as OllamaChatResponse;
   return parseStructuredContent<LocalAIEditProposal>(payload.message?.content);
 }
 
@@ -847,10 +856,7 @@ export async function requestLocalAIChat(
 ): Promise<LocalAIChatResponse> {
   assertConfigured(config);
 
-  const response = await fetch(getOllamaChatUrl(config.baseUrl), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const payload = await requestOllamaJson<OllamaChatResponse>(config.baseUrl, 'chat', {
       model: config.model.trim(),
       stream: false,
       format: chatResponseSchema,
@@ -858,7 +864,7 @@ export async function requestLocalAIChat(
         {
           role: 'system',
           content:
-            'És um assistente de programação local-first. Responde em português claro, usa o contexto recebido, dá prioridade aos trechos recuperados quando forem relevantes, admite incerteza quando faltar informação e nunca afirmes que alteraste ficheiros sem uma confirmação explícita do utilizador. Devolve JSON válido segundo o schema. references só podem usar relativePath presentes no mapa do projeto ou nos trechos recuperados; usa linha/coluna apenas quando estiveres confiante. editInstruction deve ficar vazio quando não houver uma mudança concreta e segura para a seleção atual. memoryNotes deve conter apenas factos duráveis e úteis sobre a arquitetura, decisões ou convenções do workspace; cada nota precisa de texto curto e evidências reais em ficheiros quando existirem. Deixa vazio para suposições, detalhes passageiros ou segredos.',
+            'És um assistente de programação local-first. Responde em português claro, usa o contexto recebido, dá prioridade aos trechos recuperados quando forem relevantes, admite incerteza quando faltar informação e nunca afirmes que alteraste ficheiros sem uma confirmação explícita do utilizador. Devolve JSON válido segundo o schema. references só podem usar relativePath presentes no mapa do projeto ou nos trechos recuperados; usa linha/coluna apenas quando estiveres confiante. editInstruction deve ficar vazio quando não houver uma mudança concreta e segura; quando houver pedido de código, pode descrever uma mudança para a seleção atual ou para inserção no cursor se não houver seleção. memoryNotes deve conter apenas factos duráveis e úteis sobre a arquitetura, decisões ou convenções do workspace; cada nota precisa de texto curto e evidências reais em ficheiros quando existirem. Deixa vazio para suposições, detalhes passageiros ou segredos.',
         },
         {
           role: 'user',
@@ -866,14 +872,7 @@ export async function requestLocalAIChat(
         },
         ...messages.map(({ role, content }) => ({ role, content })),
       ],
-    }),
   });
-
-  if (!response.ok) {
-    throw new Error('A IA local não conseguiu responder ao chat.');
-  }
-
-  const payload = (await response.json()) as OllamaChatResponse;
   const parsed = parseStructuredContent<LocalAIChatResponse>(payload.message?.content);
   if (!parsed.answer.trim()) {
     throw new Error('A IA local devolveu uma resposta inválida.');

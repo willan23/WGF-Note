@@ -85,7 +85,8 @@ export function createDraftFile(
 }
 
 export function createPersistedFile(uri: string, content: string): PythonFile {
-  const name = uri.substring(uri.lastIndexOf('/') + 1);
+  const encodedName = uri.substring(uri.lastIndexOf('/') + 1);
+  const name = decodeURIComponent(encodedName);
   return {
     id: `file:${uri}`,
     name,
@@ -255,7 +256,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           action.payload.oldPath,
           action.payload.newPath,
         );
-        const nextName = nextPath.substring(nextPath.lastIndexOf('/') + 1);
+        const nextName = decodeURIComponent(nextPath.substring(nextPath.lastIndexOf('/') + 1));
 
         return {
           ...file,

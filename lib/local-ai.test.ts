@@ -87,7 +87,7 @@ describe('local-ai', () => {
     });
   });
 
-  it('exige seleção e instrução para propostas de edição', async () => {
+  it('exige instrução para propostas de edição', async () => {
     await expect(
       requestLocalAIEditProposal(
         { baseUrl: 'http://localhost:11434', model: 'qwen' },
@@ -99,7 +99,42 @@ describe('local-ai', () => {
           instruction: '',
         },
       ),
-    ).rejects.toThrow('Selecione código');
+    ).rejects.toThrow('Escreva uma instrução');
+  });
+
+  it('permite gerar código no cursor sem seleção', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          message: {
+            content: JSON.stringify({
+              title: 'Criar função',
+              summary: 'Adiciona uma função nova.',
+              replacement: 'def ola():\n    return "olá"',
+            }),
+          },
+        }),
+      })),
+    );
+
+    await expect(
+      requestLocalAIEditProposal(
+        { baseUrl: 'http://localhost:11434', model: 'qwen' },
+        {
+          language: 'python',
+          fileName: 'main.py',
+          fullContent: '',
+          selectedText: '',
+          instruction: 'cria uma função ola',
+        },
+      ),
+    ).resolves.toEqual({
+      title: 'Criar função',
+      summary: 'Adiciona uma função nova.',
+      replacement: 'def ola():\n    return "olá"',
+    });
   });
 
   it('devolve propostas estruturadas de edição', async () => {

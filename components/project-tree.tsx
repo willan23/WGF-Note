@@ -17,8 +17,9 @@ import {
   createDirectory,
   createFile,
   deleteFileOrDirectory,
-  getProjectsDirectoryUri,
+  isDesktopRuntime,
   listFiles,
+  pickProjectDirectoryFromSystem,
   renameFileOrDirectory,
   type FileInfo,
 } from '@/lib/file-system-manager';
@@ -324,8 +325,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
 export function ProjectTree({ visible, onClose }: ProjectTreeProps) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { state, openFileFromSystem, renameWorkspacePath, removeWorkspacePath } = useEditor();
-  const rootDirectoryUri = useMemo(() => getProjectsDirectoryUri(), []);
+  const {
+    state,
+    openFileFromSystem,
+    renameWorkspacePath,
+    removeWorkspacePath,
+    workspaceRootUri: rootDirectoryUri,
+    setWorkspaceRootUri,
+  } = useEditor();
   const [childrenByDirectory, setChildrenByDirectory] = useState<Record<string, FileInfo[]>>({});
   const [expandedDirectoryUris, setExpandedDirectoryUris] = useState<string[]>([]);
   const [loadingDirectoryUris, setLoadingDirectoryUris] = useState<string[]>([]);
@@ -426,6 +433,16 @@ export function ProjectTree({ visible, onClose }: ProjectTreeProps) {
       expandedDirectoryUris.map((directoryUri) => loadDirectory(directoryUri, true)),
     );
   }, [expandedDirectoryUris, loadDirectory, rootDirectoryUri]);
+
+  const handleOpenWorkspace = useCallback(async () => {
+    const uri = await pickProjectDirectoryFromSystem();
+    if (!uri) return;
+
+    setWorkspaceRootUri(uri);
+    setChildrenByDirectory({});
+    setExpandedDirectoryUris([]);
+    await loadDirectory(uri, true);
+  }, [loadDirectory, setWorkspaceRootUri]);
 
   const refreshDirectory = useCallback(
     async (directoryUri: string) => {
@@ -576,6 +593,16 @@ export function ProjectTree({ visible, onClose }: ProjectTreeProps) {
             </View>
 
             <View style={styles.headerActions}>
+              {isDesktopRuntime() ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Abrir pasta de projeto"
+                  style={styles.iconButton}
+                  onPress={handleOpenWorkspace}
+                >
+                  <Ionicons name="folder-open-outline" size={18} color={colors.primary} />
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Criar ficheiro na raiz"

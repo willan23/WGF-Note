@@ -16,8 +16,10 @@ import {
   deleteFileOrDirectory,
   fileExists,
   getParentDirectoryUri,
-  getProjectsDirectoryUri,
+  isDesktopRuntime,
   listFiles,
+  pickFilesFromSystem,
+  pickProjectDirectoryFromSystem,
   renameFileOrDirectory,
   type FileInfo,
 } from '@/lib/file-system-manager';
@@ -43,8 +45,12 @@ export function FileManager({
   onClose,
 }: FileManagerProps) {
   const colors = useColors();
-  const { renameWorkspacePath, removeWorkspacePath } = useEditor();
-  const rootDirectoryUri = useMemo(() => getProjectsDirectoryUri(), []);
+  const {
+    renameWorkspacePath,
+    removeWorkspacePath,
+    workspaceRootUri: rootDirectoryUri,
+    setWorkspaceRootUri,
+  } = useEditor();
   const [currentDirectoryUri, setCurrentDirectoryUri] = useState(rootDirectoryUri);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
@@ -72,6 +78,10 @@ export function FileManager({
       loadFiles();
     }
   }, [loadFiles, visible]);
+
+  useEffect(() => {
+    setCurrentDirectoryUri(rootDirectoryUri);
+  }, [rootDirectoryUri]);
 
   const handleDeleteFile = useCallback(
     (file: FileInfo) => {
@@ -188,6 +198,23 @@ export function FileManager({
       setCurrentDirectoryUri(parent);
     }
   }, [currentDirectoryUri, rootDirectoryUri]);
+
+  const handleImportFiles = useCallback(async () => {
+    const importedFiles = await pickFilesFromSystem();
+    const firstFile = importedFiles.find((file) => !file.isDirectory);
+    if (!firstFile) return;
+
+    onSelectFile(firstFile);
+    onClose();
+  }, [onClose, onSelectFile]);
+
+  const handleOpenWorkspace = useCallback(async () => {
+    const uri = await pickProjectDirectoryFromSystem();
+    if (!uri) return;
+
+    setWorkspaceRootUri(uri);
+    setCurrentDirectoryUri(uri);
+  }, [setWorkspaceRootUri]);
 
   const styles = useMemo(
     () =>
@@ -435,6 +462,25 @@ export function FileManager({
               <Text style={[styles.buttonText, styles.buttonTextSecondary]}>+ Pasta</Text>
             </Pressable>
           </View>
+
+          {isDesktopRuntime() ? (
+            <View style={styles.navRow}>
+              <Pressable
+                style={[styles.button, styles.buttonPrimary]}
+                onPress={handleImportFiles}
+              >
+                <Text style={styles.buttonText}>Abrir ficheiro do PC</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={handleOpenWorkspace}
+              >
+                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
+                  Abrir pasta de projeto
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           {createMode ? (
             <View style={styles.inputSection}>

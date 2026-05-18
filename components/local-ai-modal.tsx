@@ -12,11 +12,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
-import {
-  getProjectsDirectoryUri,
-  listFiles,
-  openFile,
-} from '@/lib/file-system-manager';
+import { listFiles, openFile } from '@/lib/file-system-manager';
+import { useEditor } from '@/lib/editor-context';
+import { isDesktopRuntime } from '@/lib/desktop-bridge';
 import {
   addWorkspaceMemoryNote,
   clearLocalAIWorkspaceMemory,
@@ -47,6 +45,7 @@ import type {
 } from '@/lib/local-ai';
 import {
   retrieveRelevantWorkspaceSnippetsForLocalAI,
+  listOllamaModels,
   requestLocalAIChat,
   requestLocalAIEditProposal,
   requestLocalAIExplanation,
@@ -76,7 +75,6 @@ interface LocalAIModalProps {
 
 interface ChatMessageRowProps {
   message: LocalAIChatMessage;
-  canCreateProposal: boolean;
   onOpenReference: (reference: LocalAIChatReference) => void;
   onCreateProposal: (instruction: string) => void;
   styles: ReturnType<typeof createStyles>;
@@ -101,7 +99,6 @@ const emptyRetrievedSnippets: LocalAIRetrievedSnippet[] = [];
 
 const ChatMessageRow = memo(function ChatMessageRow({
   message,
-  canCreateProposal,
   onOpenReference,
   onCreateProposal,
   styles,
@@ -139,16 +136,10 @@ const ChatMessageRow = memo(function ChatMessageRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Gerar proposta a partir da conversa"
-          disabled={!canCreateProposal}
           onPress={() => onCreateProposal(message.editInstruction!)}
-          style={[
-            styles.inlineChatAction,
-            !canCreateProposal && styles.actionDisabled,
-          ]}
+          style={styles.inlineChatAction}
         >
-          <Text style={styles.inlineChatActionText}>
-            {canCreateProposal ? 'Gerar proposta' : 'Selecione código para gerar proposta'}
-          </Text>
+          <Text style={styles.inlineChatActionText}>Gerar proposta</Text>
         </Pressable>
       ) : null}
     </View>
@@ -696,7 +687,7 @@ export function LocalAIModal({
 }: LocalAIModalProps) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const rootDirectoryUri = useMemo(() => getProjectsDirectoryUri(), []);
+  const { workspaceRootUri: rootDirectoryUri, updateSettings } = useEditor();
   const [mode, setMode] = useState<'chat' | 'actions' | 'memory'>('chat');
   const [instruction, setInstruction] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -861,6 +852,48 @@ export function LocalAIModal({
     }
   }, [baseUrl, context, model]);
 
+  const handleAutoConfigureLocalAI = useCallback(async () => {
+    const detectedBaseUrl = baseUrl.trim() || 'http://127.0.0.1:11434';
+
+    try {
+      const models = await listOllamaModels(detectedBaseUrl);
+      if (models.length === 0) {
+        updateSettings({
+          localAiEnabled: true,
+          localAiBaseUrl: detectedBaseUrl,
+        });
+        Alert.alert(
+          'IA local',
+          'Encontrei o Ollama, mas ainda não há modelos instalados. Instale um modelo local e volte a tentar.',
+        );
+        return;
+      }
+
+      const localModels = models.filter(
+        (item) => !`${item.name} ${item.model}`.toLocaleLowerCase().includes(':cloud'),
+      );
+      const candidateModels = localModels.length > 0 ? localModels : models;
+      const preferredModel =
+        candidateModels.find((item) => /coder|code|qwen/i.test(`${item.name} ${item.model}`)) ??
+        candidateModels[0];
+
+      updateSettings({
+        localAiEnabled: true,
+        localAiBaseUrl: detectedBaseUrl,
+        localAiModel: preferredModel.name,
+      });
+      Alert.alert(
+        'IA local pronta',
+        `Configurado ${preferredModel.name}. Já podes conversar e pedir código.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        'IA local',
+        error instanceof Error ? error.message : 'Não foi possível configurar automaticamente.',
+      );
+    }
+  }, [baseUrl, updateSettings]);
+
   const handlePropose = useCallback(async () => {
     setIsLoading(true);
     setExplanation(null);
@@ -885,7 +918,7 @@ export function LocalAIModal({
     }
   }, [baseUrl, context, model, selectedText, selectionEnd, selectionStart]);
 
-  const canPropose = canUseLocalAI && Boolean(selectedText.trim()) && Boolean(instruction.trim());
+  const canPropose = canUseLocalAI && Boolean(instruction.trim());
   const canSendChat = canUseLocalAI && Boolean(chatInput.trim()) && !isChatLoading;
 
   const handleSendChat = useCallback(async () => {
@@ -1216,11 +1249,6 @@ export function LocalAIModal({
 
   const handleCreateProposalFromChat = useCallback(
     async (editInstruction: string) => {
-      if (!selectedText.trim()) {
-        Alert.alert('IA local', 'Selecione código antes de gerar uma proposta.');
-        return;
-      }
-
       setMode('actions');
       setInstruction(editInstruction);
       setExplanation(null);
@@ -1343,11 +1371,24 @@ export function LocalAIModal({
                 <Text style={styles.helper}>
                   Ative a IA local nas definições e informe o endereço do Ollama e o modelo instalado.
                 </Text>
+                {isDesktopRuntime() ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Configurar IA local automaticamente"
+                    onPress={handleAutoConfigureLocalAI}
+                    style={[styles.actionButton, styles.primaryAction]}
+                  >
+                    <Text style={[styles.actionText, styles.primaryActionText]}>
+                      Configurar automaticamente no PC
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : mode === 'actions' ? (
               <>
                 <Text style={styles.helper}>
-                  A IA lê o ficheiro atual e a seleção. Alterações só são aplicadas depois da tua aprovação.
+                  A IA lê o ficheiro atual e a seleção. Com seleção, altera um trecho; sem seleção,
+                  escreve código novo no cursor. Nada é aplicado sem a tua aprovação.
                 </Text>
 
                 <TextInput
@@ -1711,11 +1752,10 @@ export function LocalAIModal({
                   </View>
                 ) : (
                   chatMessages.map((message, index) => (
-                    <ChatMessageRow
-                      key={`${message.role}-${index}-${message.content}`}
-                      message={message}
-                      canCreateProposal={Boolean(selectedText.trim())}
-                      onOpenReference={handleOpenReference}
+                      <ChatMessageRow
+                        key={`${message.role}-${index}-${message.content}`}
+                        message={message}
+                        onOpenReference={handleOpenReference}
                       onCreateProposal={handleCreateProposalFromChat}
                       styles={styles}
                     />

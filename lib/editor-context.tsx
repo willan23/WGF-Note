@@ -8,6 +8,7 @@ import * as FileSystemManager from './file-system-manager';
 import * as BookmarksManager from './bookmarks-manager';
 import * as RecentFilesManager from './recent-files-manager';
 import * as AutoIndent from './auto-indent';
+import { isDesktopRuntime } from './desktop-bridge';
 import {
   createDraftFile,
   createPersistedFile,
@@ -63,6 +64,8 @@ interface EditorContextType {
   indentSelection: () => void;
   dedentSelection: () => void;
   getRecentFiles: () => Promise<RecentFilesManager.RecentFile[]>;
+  workspaceRootUri: string;
+  setWorkspaceRootUri: (uri: string) => void;
 }
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
@@ -78,8 +81,8 @@ const defaultSettings: AppSettings = {
   autoSaveInterval: 30000,
   showLineNumbers: true,
   showWhitespace: false,
-  localAiEnabled: false,
-  localAiBaseUrl: '',
+  localAiEnabled: isDesktopRuntime(),
+  localAiBaseUrl: isDesktopRuntime() ? 'http://127.0.0.1:11434' : '',
   localAiModel: '',
 };
 
@@ -102,6 +105,9 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
   const [historyByFileId, setHistoryByFileId] = useState<
     Record<string, UndoRedoManager.UndoRedoState>
   >({});
+  const [workspaceRootUri, setWorkspaceRootUriState] = useState(() =>
+    FileSystemManager.getProjectsDirectoryUri(),
+  );
   const { setColorScheme } = useThemeContext();
 
   const currentLanguage = state.currentFile?.language ?? 'python';
@@ -661,6 +667,11 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
 
   const getRecentFiles = useCallback(async () => RecentFilesManager.getRecentFiles(), []);
 
+  const setWorkspaceRootUri = useCallback((uri: string) => {
+    FileSystemManager.setProjectsDirectoryUri(uri);
+    setWorkspaceRootUriState(uri);
+  }, []);
+
   const value = useMemo<EditorContextType>(
     () => ({
       state,
@@ -697,6 +708,8 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       indentSelection,
       dedentSelection,
       getRecentFiles,
+      workspaceRootUri,
+      setWorkspaceRootUri,
     }),
     [
       autoIndentCurrentLine,
@@ -724,6 +737,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       setCurrentLanguage,
       setCursorPosition,
       setSelection,
+      setWorkspaceRootUri,
       state,
       toggleBookmark,
       undo,
@@ -731,6 +745,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       updateFileContent,
       updateSettings,
       cut,
+      workspaceRootUri,
     ],
   );
 

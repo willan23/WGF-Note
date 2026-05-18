@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
-import { getProjectsDirectoryUri, listFiles, openFile } from '@/lib/file-system-manager';
+import { listFiles, openFile } from '@/lib/file-system-manager';
 import {
   planWorkspaceReplacement,
   searchWorkspace,
@@ -565,8 +565,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
 export function ProjectSearchModal({ visible, onClose }: ProjectSearchModalProps) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { state, openFileFromSystemAtRange, applyWorkspaceReplacementPlan } = useEditor();
-  const rootDirectoryUri = useMemo(() => getProjectsDirectoryUri(), []);
+  const {
+    state,
+    openFileFromSystemAtRange,
+    applyWorkspaceReplacementPlan,
+    workspaceRootUri: rootDirectoryUri,
+  } = useEditor();
   const [query, setQuery] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);

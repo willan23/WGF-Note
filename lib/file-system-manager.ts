@@ -5,6 +5,9 @@
 
 import { Paths, File, Directory } from 'expo-file-system';
 import { Platform } from 'react-native';
+import { getDesktopBridge, isDesktopRuntime } from './desktop-bridge';
+
+export { isDesktopRuntime } from './desktop-bridge';
 
 export interface FileInfo {
     uri: string;
@@ -18,6 +21,26 @@ export interface SaveOptions {
     encoding?: 'utf8' | 'base64';
     directoryUri?: string;
     fileUri?: string;
+}
+
+const DESKTOP_WORKSPACE_ROOT_KEY = '@editor_workspace_root_uri';
+
+function getStoredDesktopWorkspaceRoot(): string | null {
+    if (!isDesktopRuntime() || typeof window === 'undefined') return null;
+
+    try {
+        return window.localStorage.getItem(DESKTOP_WORKSPACE_ROOT_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function ensureDirectoryUri(uri: string): string {
+    return uri.endsWith('/') ? uri : `${uri}/`;
+}
+
+function createChildUri(parentUri: string, childName: string): string {
+    return new URL(childName, ensureDirectoryUri(parentUri)).href;
 }
 
 /**
@@ -62,8 +85,41 @@ function getDocumentsPath(): string {
 }
 
 export function getProjectsDirectoryUri(): string {
+    if (isDesktopRuntime()) {
+        return (
+            getStoredDesktopWorkspaceRoot() ??
+            getDesktopBridge()?.projectsDirectoryUri ??
+            'web://documents/projects'
+        );
+    }
+
     const docDir = getDocumentsPath();
     return createSafeDirectory(docDir, 'projects')?.uri ?? `${docDir.replace(/\/+$/, '')}/projects`;
+}
+
+export function setProjectsDirectoryUri(uri: string): void {
+    if (!isDesktopRuntime() || typeof window === 'undefined') return;
+
+    try {
+        window.localStorage.setItem(DESKTOP_WORKSPACE_ROOT_KEY, ensureDirectoryUri(uri));
+    } catch {
+        // Mantemos a raiz atual apenas na sessão se o storage não estiver disponível.
+    }
+}
+
+export async function pickProjectDirectoryFromSystem(): Promise<string | null> {
+    const bridge = getDesktopBridge();
+    if (!bridge) return null;
+
+    const uri = await bridge.pickDirectory();
+    if (uri) {
+        setProjectsDirectoryUri(uri);
+    }
+    return uri;
+}
+
+export async function pickFilesFromSystem(): Promise<FileInfo[]> {
+    return getDesktopBridge()?.pickFiles() ?? [];
 }
 
 export function getParentDirectoryUri(path: string): string | null {
@@ -101,7 +157,15 @@ export async function saveFile(
 ): Promise<string> {
     try {
         if (Platform.OS === 'web') {
-            // No Web, apenas simulamos o sucesso para não travar o editor
+            const bridge = getDesktopBridge();
+            if (bridge) {
+                const uri =
+                    options.fileUri ??
+                    createChildUri(options.directoryUri ?? getProjectsDirectoryUri(), fileName);
+                return bridge.writeFile(uri, content);
+            }
+
+            // No browser puro, apenas simulamos o sucesso para não travar o editor.
             return `web-simulated://${fileName}`;
         }
 
@@ -128,7 +192,8 @@ export async function saveFile(
 export async function openFile(filePath: string): Promise<string> {
     try {
         if (Platform.OS === 'web') {
-            return ''; // Ou retornar conteúdo de um Mock/Store
+            const bridge = getDesktopBridge();
+            return bridge ? bridge.readFile(filePath) : '';
         }
 
         const file = createSafeFile(filePath);
@@ -145,7 +210,10 @@ export async function openFile(filePath: string): Promise<string> {
  */
 export async function listFiles(directoryPath?: string): Promise<FileInfo[]> {
     try {
-        if (Platform.OS === 'web') return [];
+        if (Platform.OS === 'web') {
+            const bridge = getDesktopBridge();
+            return bridge ? bridge.listDirectory(directoryPath ?? getProjectsDirectoryUri()) : [];
+        }
 
         const path = directoryPath || getProjectsDirectoryUri();
         if (!path) return [];
@@ -222,7 +290,12 @@ export async function writeFileContent(filePath: string, content: string): Promi
  */
 export async function createDirectory(directoryName: string, parentDirectoryUri?: string): Promise<string> {
     try {
-        if (Platform.OS === 'web') return `web-simulated-dir://${directoryName}`;
+        if (Platform.OS === 'web') {
+            const bridge = getDesktopBridge();
+            return bridge
+                ? bridge.createDirectory(parentDirectoryUri ?? getProjectsDirectoryUri(), directoryName)
+                : `web-simulated-dir://${directoryName}`;
+        }
 
         const parentDir = createSafeDirectory(parentDirectoryUri ?? getProjectsDirectoryUri());
         if (!parentDir) throw new Error('Sistema de ficheiros não disponível');
@@ -241,7 +314,10 @@ export async function createDirectory(directoryName: string, parentDirectoryUri?
  */
 export async function deleteFileOrDirectory(path: string, isDirectory: boolean = false): Promise<void> {
     try {
-        if (Platform.OS === 'web') return;
+        if (Platform.OS === 'web') {
+            await getDesktopBridge()?.deletePath(path, isDirectory);
+            return;
+        }
 
         if (isDirectory) {
             const dir = createSafeDirectory(path);
@@ -265,7 +341,12 @@ export async function renameFileOrDirectory(
     isDirectory: boolean = false,
 ): Promise<string> {
     try {
-        if (Platform.OS === 'web') return `web-simulated-renamed://${newName}`;
+        if (Platform.OS === 'web') {
+            const bridge = getDesktopBridge();
+            return bridge
+                ? bridge.renamePath(oldPath, newName, isDirectory)
+                : `web-simulated-renamed://${newName}`;
+        }
 
         if (isDirectory) {
             const dir = createSafeDirectory(oldPath);
@@ -287,7 +368,10 @@ export async function renameFileOrDirectory(
  */
 export async function copyFile(sourcePath: string, destName: string): Promise<string> {
     try {
-        if (Platform.OS === 'web') return `web-simulated-copy://${destName}`;
+        if (Platform.OS === 'web') {
+            const bridge = getDesktopBridge();
+            return bridge ? bridge.copyFile(sourcePath, destName) : `web-simulated-copy://${destName}`;
+        }
 
         const file = createSafeFile(sourcePath);
         if (!file) throw new Error('Ficheiro de origem inválido');
@@ -310,7 +394,10 @@ export async function copyFile(sourcePath: string, destName: string): Promise<st
  */
 export async function moveFile(sourcePath: string, destPath: string): Promise<void> {
     try {
-        if (Platform.OS === 'web') return;
+        if (Platform.OS === 'web') {
+            await getDesktopBridge()?.movePath(sourcePath, destPath);
+            return;
+        }
 
         const file = createSafeFile(sourcePath);
         if (!file) throw new Error('Ficheiro de origem inválido');
@@ -328,7 +415,9 @@ export async function moveFile(sourcePath: string, destPath: string): Promise<vo
  */
 export async function fileExists(filePath: string): Promise<boolean> {
     try {
-        if (Platform.OS === 'web') return false;
+        if (Platform.OS === 'web') {
+            return (await getDesktopBridge()?.exists(filePath)) ?? false;
+        }
         const file = createSafeFile(filePath);
         return file?.exists || false;
     } catch (error) {
@@ -341,7 +430,9 @@ export async function fileExists(filePath: string): Promise<boolean> {
  */
 export async function getFileInfo(filePath: string): Promise<FileInfo | null> {
     try {
-        if (Platform.OS === 'web') return null;
+        if (Platform.OS === 'web') {
+            return (await getDesktopBridge()?.statPath(filePath)) ?? null;
+        }
 
         const file = createSafeFile(filePath);
         if (file && file.exists) {

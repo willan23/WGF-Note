@@ -17,7 +17,11 @@ import { FileManager } from "@/components/file-manager";
 import { ProjectTree } from "@/components/project-tree";
 import { useEditor } from "@/lib/editor-context";
 import { formatCode } from "@/lib/code-formatter";
-import { openFile as openFileContent } from "@/lib/file-system-manager";
+import {
+  isDesktopRuntime,
+  openFile as openFileContent,
+  pickFilesFromSystem,
+} from "@/lib/file-system-manager";
 import { detectSyntaxErrors } from "@/lib/python-analyzer";
 import { detectHTMLErrors } from "@/lib/html-analyzer";
 import { detectCSSErrors } from "@/lib/css-analyzer";
@@ -66,8 +70,14 @@ function EditorScreenContent() {
   }, [createNewFile, openFile, currentLanguage]);
 
   const handleOpen = useCallback(async () => {
+    if (isDesktopRuntime()) {
+      const files = await pickFilesFromSystem();
+      await Promise.all(files.filter((file) => !file.isDirectory).map((file) => openFileFromSystem(file.uri)));
+      return;
+    }
+
     setShowFileManager(true);
-  }, []);
+  }, [openFileFromSystem]);
 
   const handleSave = useCallback(async () => {
     try {
