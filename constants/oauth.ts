@@ -38,11 +38,15 @@ export function getApiBaseUrl(): string {
 
   // On web, derive from current hostname by replacing port 8081 with 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
+    const runtimeApiBaseUrl = (window as Window & {
+      __NOTE_PY_API_BASE_URL__?: string;
+    }).__NOTE_PY_API_BASE_URL__;
+    if (runtimeApiBaseUrl) {
+      return runtimeApiBaseUrl.replace(/\/$/, "");
+    }
+
     if (window.location.protocol === "file:") {
-      const runtimeApiBaseUrl = (window as Window & {
-        __NOTE_PY_API_BASE_URL__?: string;
-      }).__NOTE_PY_API_BASE_URL__;
-      return (runtimeApiBaseUrl || "http://127.0.0.1:3000").replace(/\/$/, "");
+      return "http://127.0.0.1:3000";
     }
 
     const { protocol, hostname } = window.location;

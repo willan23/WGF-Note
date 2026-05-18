@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Pressable, Text, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Pressable, Text, ScrollView, StyleSheet } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,10 @@ interface EditorToolbarProps {
   onPreview?: () => void;
   onFileManager?: () => void;
   onProjectTree?: () => void;
+  onProblems?: () => void;
+  onTerminal?: () => void;
+  problemsActive?: boolean;
+  terminalActive?: boolean;
 }
 
 export function EditorToolbar({
@@ -41,6 +45,10 @@ export function EditorToolbar({
   onPreview,
   onFileManager,
   onProjectTree,
+  onProblems,
+  onTerminal,
+  problemsActive = false,
+  terminalActive = false,
 }: EditorToolbarProps) {
   const colors = useColors();
   const { canUndo, canRedo, currentLanguage } = useEditor();
@@ -54,58 +62,50 @@ export function EditorToolbar({
           backgroundColor: colors.surface,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          height: 70,
+          minHeight: 46,
         },
         contentContainer: {
           flexDirection: 'row',
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          alignItems: 'center',
-          gap: 10,
-        },
-        button: {
-          flexDirection: 'column',
           paddingHorizontal: 10,
           paddingVertical: 6,
-          borderRadius: 8,
-          backgroundColor: colors.background,
-          minWidth: 60,
+          alignItems: 'center',
+          gap: 4,
+        },
+        button: {
+          flexDirection: 'row',
+          paddingHorizontal: 10,
+          paddingVertical: 7,
+          borderRadius: 6,
+          minWidth: 0,
           justifyContent: 'center',
           alignItems: 'center',
-          ...Platform.select({
-            web: {
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-            },
-            default: {
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.1,
-              shadowRadius: 2,
-              elevation: 2,
-            },
-          }),
         },
         buttonActive: {
-          backgroundColor: colors.primary,
+          backgroundColor: `${colors.primary}1A`,
         },
         buttonDisabled: {
-          opacity: 0.3,
+          opacity: 0.35,
         },
         buttonText: {
-          fontSize: 10,
-          fontWeight: '500',
+          fontSize: 11,
+          fontWeight: '700',
           color: colors.foreground,
-          marginTop: 4,
+          marginLeft: 6,
         },
         buttonTextActive: {
-          color: colors.background,
+          color: colors.foreground,
         },
         icon: {
-          marginBottom: -2,
+          marginBottom: 0,
+        },
+        separator: {
+          width: 1,
+          height: 22,
+          backgroundColor: colors.border,
+          marginHorizontal: 4,
         },
       }),
     [
-      colors.background,
       colors.border,
       colors.foreground,
       colors.primary,
@@ -139,13 +139,13 @@ export function EditorToolbar({
         styles.button,
         active && styles.buttonActive,
         disabled && styles.buttonDisabled,
-        pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] },
+        pressed && { opacity: 0.72 },
       ]}
     >
       <Provider
         name={icon}
-        size={20}
-        color={active ? colors.background : (disabled ? colors.muted : colors.primary)}
+        size={16}
+        color={disabled ? colors.muted : active ? colors.primary : colors.foreground}
         style={styles.icon}
       />
       <Text
@@ -171,6 +171,7 @@ export function EditorToolbar({
         <ToolButton label="Novo" icon="add-outline" onPress={onNew} />
         <ToolButton label="Abrir" icon="folder-open-outline" onPress={onOpen} />
         <ToolButton label="Guardar" icon="save-outline" onPress={onSave} />
+        <View style={styles.separator} />
         <ToolButton
           label="Desfazer"
           icon="arrow-undo-outline"
@@ -183,17 +184,32 @@ export function EditorToolbar({
           onPress={onRedo}
           disabled={!canRedo}
         />
+        <View style={styles.separator} />
         <ToolButton label="Pesquisar" icon="search-outline" onPress={onSearch} />
         <ToolButton label="No projeto" icon="search-circle-outline" onPress={onProjectSearch} />
         <ToolButton label="IA local" icon="sparkles-outline" onPress={onLocalAI} />
+        <View style={styles.separator} />
         <ToolButton label="Templates" icon="copy-outline" onPress={onTemplates} />
         <ToolButton label="Sugestões" icon="bulb-outline" onPress={onSuggestions} />
         <ToolButton label="Limpar" icon="brush-outline" onPress={onFormat} />
         {currentLanguageFeatures.supportsPreview ? (
           <ToolButton label="Preview" icon="eye-outline" onPress={onPreview} />
         ) : null}
-        <ToolButton label="Projeto" icon="git-branch-outline" onPress={onProjectTree} />
-        <ToolButton label="Ficheiros" icon="list-outline" onPress={onFileManager} />
+        <ToolButton label="Explorador" icon="git-branch-outline" onPress={onProjectTree} />
+        <ToolButton label="Gestor" icon="list-outline" onPress={onFileManager} />
+        <ToolButton
+          label="Problemas"
+          icon="warning-outline"
+          onPress={onProblems}
+          active={problemsActive}
+        />
+        <ToolButton
+          label="Terminal"
+          icon="terminal-outline"
+          onPress={onTerminal}
+          active={terminalActive}
+        />
+        <View style={styles.separator} />
         <ToolButton
           label={currentLanguageConfig.displayName}
           icon="language-outline"

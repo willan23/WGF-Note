@@ -48,7 +48,11 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[API] Error response:", errorText);
+      const isExpectedAnonymousAuthProbe =
+        cleanEndpoint === "/api/auth/me" && response.status === 401;
+      if (!isExpectedAnonymousAuthProbe) {
+        console.error("[API] Error response:", errorText);
+      }
       let errorMessage = errorText;
       try {
         const errorJson = JSON.parse(errorText);
@@ -68,7 +72,13 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
     const text = await response.text();
     return (text ? JSON.parse(text) : {}) as T;
   } catch (error) {
-    console.error("[API] Request failed:", error);
+    const isExpectedAnonymousAuthProbe =
+      cleanEndpoint === "/api/auth/me" &&
+      error instanceof Error &&
+      error.message === "Not authenticated";
+    if (!isExpectedAnonymousAuthProbe) {
+      console.error("[API] Request failed:", error);
+    }
     if (error instanceof Error) {
       throw error;
     }
@@ -131,7 +141,9 @@ export async function getMe(): Promise<{
     const result = await apiCall<{ user: any }>("/api/auth/me");
     return result.user || null;
   } catch (error) {
-    console.error("[API] getMe failed:", error);
+    if (!(error instanceof Error && error.message === "Not authenticated")) {
+      console.error("[API] getMe failed:", error);
+    }
     return null;
   }
 }

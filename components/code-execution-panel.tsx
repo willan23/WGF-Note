@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/use-auth';
 import { AuthModal } from '@/components/auth-modal';
 
-export function CodeExecutionPanel() {
+export function CodeExecutionPanel({ embedded = false }: { embedded?: boolean }) {
   const colors = useColors();
   const { state } = useEditor();
   const [isExecuting, setIsExecuting] = useState(false);
@@ -71,9 +71,10 @@ export function CodeExecutionPanel() {
 
   const styles = StyleSheet.create({
     container: {
-      height: 250,
+      height: embedded ? undefined : 250,
+      flex: embedded ? 1 : undefined,
       backgroundColor: '#000', // Terminal always dark
-      borderTopWidth: 1,
+      borderTopWidth: embedded ? 0 : 1,
       borderTopColor: '#333',
     },
     header: {

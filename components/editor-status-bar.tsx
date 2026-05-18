@@ -17,23 +17,21 @@ export function EditorStatusBar() {
       StyleSheet.create({
         container: {
           flexDirection: 'row',
-          backgroundColor: colors.surface,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
+          backgroundColor: colors.primary,
           paddingHorizontal: 12,
-          paddingVertical: 6,
+          paddingVertical: 5,
           justifyContent: 'space-between',
           alignItems: 'center',
         },
         statusText: {
           fontSize: 11,
-          color: colors.muted,
+          color: colors.background,
           fontFamily: settings.fontFamily,
         },
         fileName: {
           fontSize: 12,
           fontWeight: '600',
-          color: colors.foreground,
+          color: colors.background,
           marginRight: 8,
         },
         modified: {
@@ -53,10 +51,8 @@ export function EditorStatusBar() {
         },
       }),
     [
-      colors.border,
-      colors.foreground,
-      colors.muted,
-      colors.surface,
+      colors.background,
+      colors.primary,
       colors.warning,
       settings.fontFamily,
     ],

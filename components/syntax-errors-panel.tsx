@@ -6,20 +6,23 @@ import { SyntaxError } from '@/lib/types';
 interface SyntaxErrorsPanelProps {
   errors: SyntaxError[];
   onErrorPress?: (error: SyntaxError) => void;
+  embedded?: boolean;
 }
 
 export function SyntaxErrorsPanel({
   errors,
   onErrorPress,
+  embedded = false,
 }: SyntaxErrorsPanelProps) {
   const colors = useColors();
 
   const styles = StyleSheet.create({
     container: {
       backgroundColor: colors.surface,
-      borderTopWidth: 1,
+      borderTopWidth: embedded ? 0 : 1,
       borderTopColor: colors.border,
-      maxHeight: 200,
+      maxHeight: embedded ? undefined : 200,
+      flex: embedded ? 1 : undefined,
     },
     header: {
       paddingHorizontal: 12,
@@ -133,12 +136,14 @@ export function SyntaxErrorsPanel({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Problemas</Text>
-        {errors.length > 0 && (
-          <Text style={styles.errorCount}>{errors.length}</Text>
-        )}
-      </View>
+      {embedded ? null : (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Problemas</Text>
+          {errors.length > 0 && (
+            <Text style={styles.errorCount}>{errors.length}</Text>
+          )}
+        </View>
+      )}
       {errors.length > 0 ? (
         <FlatList
           data={errors}

@@ -1,4 +1,4 @@
-import { Alert, View, StyleSheet } from "react-native";
+import { Alert, View, StyleSheet, useWindowDimensions } from "react-native";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { EditorToolbar } from "@/components/editor-toolbar";
@@ -15,6 +15,11 @@ import { EditorPreviewSplit, useSplitView } from "@/components/split-view";
 import { WebViewPreview } from "@/components/webview-preview";
 import { FileManager } from "@/components/file-manager";
 import { ProjectTree } from "@/components/project-tree";
+import { WorkspaceExplorer } from "@/components/workspace-explorer";
+import {
+  WorkbenchBottomPanel,
+  type WorkbenchBottomPanelTab,
+} from "@/components/workbench-bottom-panel";
 import { useEditor } from "@/lib/editor-context";
 import { formatCode } from "@/lib/code-formatter";
 import {
@@ -61,7 +66,12 @@ function EditorScreenContent() {
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [showFileManager, setShowFileManager] = useState(false);
   const [showProjectTree, setShowProjectTree] = useState(false);
+  const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true);
+  const [activeBottomPanel, setActiveBottomPanel] =
+    useState<WorkbenchBottomPanelTab | null>(null);
   const { isPreviewVisible, togglePreview } = useSplitView();
+  const { width } = useWindowDimensions();
+  const shouldShowEmbeddedSidebar = width >= 980 && showWorkspaceSidebar;
 
   const handleNew = useCallback(() => {
     const ext = getLanguageConfig(currentLanguage).extension;
@@ -218,6 +228,20 @@ function EditorScreenContent() {
           backgroundColor: colors.background,
           flexDirection: 'column',
         },
+        workbenchBody: {
+          flex: 1,
+          flexDirection: 'row',
+          minHeight: 0,
+        },
+        sidebar: {
+          width: 286,
+          flexShrink: 0,
+        },
+        editorColumn: {
+          flex: 1,
+          minWidth: 0,
+          backgroundColor: colors.background,
+        },
         mainContent: {
           flex: 1,
           width: '100%',
@@ -244,31 +268,65 @@ function EditorScreenContent() {
         onLanguageSelect={() => setShowLanguageSelector(true)}
         onFormat={handleFormat}
         onPreview={currentLanguageFeatures.supportsPreview ? togglePreview : undefined}
-        onProjectTree={() => setShowProjectTree(true)}
-        onFileManager={() => setShowFileManager(true)}
-      />
-      <EditorTabs />
-
-      {/* Main content area */}
-      <View style={styles.mainContent}>
-        <EditorPreviewSplit
-          language={currentLanguage}
-          isPreviewVisible={isPreviewVisible}
-          onTogglePreview={togglePreview}
-          editor={<CodeEditor />}
-          preview={
-            <WebViewPreview
-              code={state.currentFile?.content || ''}
-              language={currentLanguage === 'css' ? 'css' : 'html'}
-            />
+        onProjectTree={() => {
+          if (width >= 980) {
+            setShowWorkspaceSidebar((visible) => !visible);
+            return;
           }
-        />
-      </View>
 
-      {/* Conditional Panels */}
-      {syntaxErrors.length > 0 && (
-        <SyntaxErrorsPanel errors={syntaxErrors} onErrorPress={handleSyntaxErrorPress} />
-      )}
+          setShowProjectTree(true);
+        }}
+        onFileManager={() => setShowFileManager(true)}
+        onProblems={() =>
+          setActiveBottomPanel((current) => (current === 'problems' ? null : 'problems'))
+        }
+        onTerminal={() =>
+          setActiveBottomPanel((current) => (current === 'terminal' ? null : 'terminal'))
+        }
+        problemsActive={activeBottomPanel === 'problems'}
+        terminalActive={activeBottomPanel === 'terminal'}
+      />
+
+      <View style={styles.workbenchBody}>
+        {shouldShowEmbeddedSidebar ? (
+          <View style={styles.sidebar}>
+            <WorkspaceExplorer />
+          </View>
+        ) : null}
+
+        <View style={styles.editorColumn}>
+          <EditorTabs />
+
+          {/* Main content area */}
+          <View style={styles.mainContent}>
+            <EditorPreviewSplit
+              language={currentLanguage}
+              isPreviewVisible={isPreviewVisible}
+              onTogglePreview={togglePreview}
+              editor={<CodeEditor />}
+              preview={
+                <WebViewPreview
+                  code={state.currentFile?.content || ''}
+                  language={currentLanguage === 'css' ? 'css' : 'html'}
+                />
+              }
+            />
+          </View>
+
+          {/* Conditional Panels */}
+          {activeBottomPanel ? (
+            <WorkbenchBottomPanel
+              activeTab={activeBottomPanel}
+              errors={syntaxErrors}
+              onSelectTab={setActiveBottomPanel}
+              onClose={() => setActiveBottomPanel(null)}
+              onErrorPress={handleSyntaxErrorPress}
+            />
+          ) : syntaxErrors.length > 0 ? (
+            <SyntaxErrorsPanel errors={syntaxErrors} onErrorPress={handleSyntaxErrorPress} />
+          ) : null}
+        </View>
+      </View>
 
       {/* Status Bar at the bottom */}
       <EditorStatusBar />
