@@ -2,7 +2,7 @@
  * Templates de código para múltiplas linguagens
  */
 
-import { CodeLanguage } from './types-extended';
+import type { CodeLanguage } from './types-extended';
 
 export interface CodeTemplate {
   id: string;
@@ -161,27 +161,152 @@ const CSS_TEMPLATES: CodeTemplate[] = [
   },
 ];
 
+const JAVASCRIPT_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'js-hello',
+    name: 'Hello World',
+    description: 'Primeiro programa em JavaScript',
+    language: 'javascript',
+    code: 'function saudacao(nome) {\n  return `Olá, ${nome}!`;\n}\n\nconsole.log(saudacao("Mundo"));',
+    category: 'Básico',
+  },
+  {
+    id: 'js-fetch',
+    name: 'Fetch Assíncrono',
+    description: 'Pedido HTTP com async/await',
+    language: 'javascript',
+    code: 'async function carregarDados(url) {\n  const resposta = await fetch(url);\n  if (!resposta.ok) throw new Error("Falha no pedido");\n  return resposta.json();\n}',
+    category: 'Web',
+  },
+];
+
+const TYPESCRIPT_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'ts-interface',
+    name: 'Interface e Função',
+    description: 'Tipos básicos com retorno explícito',
+    language: 'typescript',
+    code: 'interface Utilizador {\n  id: number;\n  nome: string;\n}\n\nfunction apresentar(utilizador: Utilizador): string {\n  return `Olá, ${utilizador.nome}!`;\n}',
+    category: 'Tipos',
+  },
+];
+
+const JSON_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'json-config',
+    name: 'Configuração',
+    description: 'Objeto JSON válido com opções comuns',
+    language: 'json',
+    code: '{\n  "nome": "note-py-plus-plus",\n  "versao": "1.0.0",\n  "ativo": true,\n  "tags": ["editor", "mobile"]\n}',
+    category: 'Dados',
+  },
+];
+
+const MARKDOWN_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'md-readme',
+    name: 'README',
+    description: 'Estrutura inicial de documentação',
+    language: 'markdown',
+    code: '# Título do Projeto\n\nBreve descrição.\n\n## Instalação\n\n```bash\npnpm install\n```\n\n## Uso\n\n- Passo 1\n- Passo 2\n',
+    category: 'Documentação',
+  },
+];
+
+const SQL_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'sql-select',
+    name: 'Consulta com Join',
+    description: 'SELECT com filtro e ordenação',
+    language: 'sql',
+    code: 'SELECT u.id, u.nome, p.titulo\nFROM utilizadores AS u\nJOIN projetos AS p ON p.owner_id = u.id\nWHERE u.ativo = 1\nORDER BY p.criado_em DESC;',
+    category: 'Consultas',
+  },
+];
+
+const JAVA_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'java-main',
+    name: 'Classe Principal',
+    description: 'Programa Java mínimo executável',
+    language: 'java',
+    code: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Olá, Mundo!");\n    }\n}',
+    category: 'Básico',
+  },
+];
+
+const C_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'c-main',
+    name: 'Programa Principal',
+    description: 'Programa C mínimo',
+    language: 'c',
+    code: '#include <stdio.h>\n\nint main(void) {\n    printf("Olá, Mundo!\\n");\n    return 0;\n}',
+    category: 'Básico',
+  },
+];
+
+const CPP_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'cpp-main',
+    name: 'Programa Principal',
+    description: 'Programa C++ mínimo',
+    language: 'cpp',
+    code: '#include <iostream>\n\nint main() {\n    std::cout << "Olá, Mundo!" << std::endl;\n    return 0;\n}',
+    category: 'Básico',
+  },
+];
+
+const CSHARP_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'cs-program',
+    name: 'Programa Principal',
+    description: 'Programa C# mínimo',
+    language: 'csharp',
+    code: 'using System;\n\nclass Program\n{\n    static void Main()\n    {\n        Console.WriteLine("Olá, Mundo!");\n    }\n}',
+    category: 'Básico',
+  },
+];
+
+const PLAINTEXT_TEMPLATES: CodeTemplate[] = [
+  {
+    id: 'txt-notes',
+    name: 'Notas',
+    description: 'Estrutura simples para anotações',
+    language: 'plaintext',
+    code: 'Título:\n\nNotas:\n- \n\nPróximos passos:\n- ',
+    category: 'Texto',
+  },
+];
+
+const TEMPLATES_BY_LANGUAGE: Record<CodeLanguage, CodeTemplate[]> = {
+  python: PYTHON_TEMPLATES,
+  javascript: JAVASCRIPT_TEMPLATES,
+  typescript: TYPESCRIPT_TEMPLATES,
+  html: HTML_TEMPLATES,
+  css: CSS_TEMPLATES,
+  json: JSON_TEMPLATES,
+  markdown: MARKDOWN_TEMPLATES,
+  sql: SQL_TEMPLATES,
+  java: JAVA_TEMPLATES,
+  c: C_TEMPLATES,
+  cpp: CPP_TEMPLATES,
+  csharp: CSHARP_TEMPLATES,
+  plaintext: PLAINTEXT_TEMPLATES,
+};
+
 /**
  * Obtém todos os templates para uma linguagem
  */
 export function getTemplatesForLanguage(language: CodeLanguage): CodeTemplate[] {
-  switch (language) {
-    case 'python':
-      return PYTHON_TEMPLATES;
-    case 'html':
-      return HTML_TEMPLATES;
-    case 'css':
-      return CSS_TEMPLATES;
-    default:
-      return [];
-  }
+  return TEMPLATES_BY_LANGUAGE[language];
 }
 
 /**
  * Obtém um template específico por ID
  */
 export function getTemplateById(id: string): CodeTemplate | undefined {
-  const allTemplates = [...PYTHON_TEMPLATES, ...HTML_TEMPLATES, ...CSS_TEMPLATES];
+  const allTemplates = Object.values(TEMPLATES_BY_LANGUAGE).flat();
   return allTemplates.find(t => t.id === id);
 }
 

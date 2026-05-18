@@ -1,229 +1,208 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   Modal,
-  TextInput,
   Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Platform,
+  TextInput,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '@/hooks/use-colors';
-import { authenticateUser, logoutUser, getCurrentUser } from '@/lib/cloud-sync';
+import { getLoginUrl, isExternalOAuthConfigured } from '@/constants/oauth';
+import * as Api from '@/lib/_core/api';
+import * as Auth from '@/lib/_core/auth';
 
 interface AuthModalProps {
   visible: boolean;
   onClose: () => void;
-  onAuthSuccess?: () => void;
+  onAuthenticated?: () => Promise<void> | void;
 }
 
-export function AuthModal({ visible, onClose, onAuthSuccess }: AuthModalProps) {
+export function AuthModal({ visible, onClose, onAuthenticated }: AuthModalProps) {
   const colors = useColors();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const usesExternalOAuth = isExternalOAuthConfigured();
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 16,
-    },
-    modal: {
-      backgroundColor: colors.background,
-      borderRadius: 12,
-      padding: 24,
-      width: '100%',
-      maxWidth: 400,
-      gap: 16,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: colors.foreground,
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    subtitle: {
-      fontSize: 14,
-      color: colors.muted,
-      textAlign: 'center',
-      marginBottom: 16,
-    },
-    input: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 14,
-      color: colors.foreground,
-      marginBottom: 12,
-    },
-    button: {
-      backgroundColor: colors.primary,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 8,
-    },
-    buttonText: {
-      color: colors.background,
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    toggleButton: {
-      paddingVertical: 8,
-      alignItems: 'center',
-    },
-    toggleText: {
-      color: colors.primary,
-      fontSize: 14,
-      fontWeight: '500',
-    },
-    errorText: {
-      color: colors.error,
-      fontSize: 12,
-      marginBottom: 8,
-    },
-    loadingContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-    },
-  });
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 16,
+        },
+        modal: {
+          backgroundColor: colors.background,
+          borderRadius: 12,
+          padding: 24,
+          width: '100%',
+          maxWidth: 400,
+          gap: 16,
+        },
+        title: {
+          fontSize: 24,
+          fontWeight: '700',
+          color: colors.foreground,
+          textAlign: 'center',
+        },
+        subtitle: {
+          fontSize: 14,
+          color: colors.muted,
+          textAlign: 'center',
+          lineHeight: 20,
+        },
+        button: {
+          backgroundColor: colors.primary,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          borderRadius: 8,
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'row',
+          gap: 8,
+        },
+        secondaryButton: {
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        buttonText: {
+          color: colors.background,
+          fontSize: 16,
+          fontWeight: '600',
+        },
+        secondaryText: {
+          color: colors.foreground,
+        },
+        input: {
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 11,
+          color: colors.foreground,
+          backgroundColor: colors.surface,
+        },
+      }),
+    [
+      colors.background,
+      colors.border,
+      colors.foreground,
+      colors.muted,
+      colors.primary,
+      colors.surface,
+    ],
+  );
 
   const handleAuthenticate = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos');
-      return;
-    }
-
     setIsLoading(true);
+
     try {
-      const user = await authenticateUser(email, password);
-      if (user) {
-        Alert.alert('Sucesso', `Bem-vindo, ${user.name}!`);
-        setEmail('');
-        setPassword('');
-        onAuthSuccess?.();
-        onClose();
-      } else {
-        Alert.alert('Erro', 'Falha na autenticação. Tente novamente.');
+      const url = getLoginUrl();
+      if (Platform.OS === 'web') {
+        window.location.assign(url);
+        return;
       }
+
+      await WebBrowser.openAuthSessionAsync(url);
+      onClose();
     } catch (error) {
-      Alert.alert('Erro', 'Ocorreu um erro durante a autenticação');
+      Alert.alert(
+        'Autenticação',
+        error instanceof Error ? error.message : 'Não foi possível abrir o login.',
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    Alert.alert('Logout', 'Tem a certeza que deseja fazer logout?', [
-      {
-        text: 'Cancelar',
-        onPress: () => {},
-        style: 'cancel',
-      },
-      {
-        text: 'Logout',
-        onPress: async () => {
-          await logoutUser();
-          setEmail('');
-          setPassword('');
-          onClose();
-        },
-        style: 'destructive',
-      },
-    ]);
+  const handleLocalAuthenticate = async () => {
+    setIsLoading(true);
+
+    try {
+      const result = await Api.devLogin({ email, name });
+      const userInfo: Auth.User = {
+        ...result.user,
+        lastSignedIn: new Date(result.user.lastSignedIn),
+      };
+
+      await Auth.setSessionToken(result.sessionToken);
+      await Auth.setUserInfo(userInfo);
+      await onAuthenticated?.();
+      onClose();
+    } catch (error) {
+      Alert.alert(
+        'Autenticação local',
+        error instanceof Error ? error.message : 'Não foi possível iniciar sessão localmente.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.container}>
         <View style={styles.modal}>
-          <Text style={styles.title}>
-            {isLogin ? 'Login' : 'Registar'}
-          </Text>
+          <Text style={styles.title}>Entrar</Text>
           <Text style={styles.subtitle}>
-            {isLogin
-              ? 'Aceda à sua conta para sincronizar ficheiros'
-              : 'Crie uma conta para sincronizar ficheiros na cloud'}
+            {usesExternalOAuth
+              ? 'Inicie sessão para sincronizar ficheiros, colaborar e usar execução Python.'
+              : 'Modo local ativo: entre com um email para sincronizar e colaborar sem serviço externo.'}
           </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={colors.muted}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            editable={!isLoading}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Palavra-passe"
-            placeholderTextColor={colors.muted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!isLoading}
-          />
-
-          <Pressable
-            style={styles.button}
-            onPress={handleAuthenticate}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator color={colors.background} size="small" />
-                <Text style={styles.buttonText}>
-                  {isLogin ? 'A fazer login...' : 'A registar...'}
-                </Text>
-              </View>
-            ) : (
+          {usesExternalOAuth ? (
+            <Pressable style={styles.button} onPress={handleAuthenticate} disabled={isLoading}>
+              {isLoading ? <ActivityIndicator color={colors.background} size="small" /> : null}
               <Text style={styles.buttonText}>
-                {isLogin ? 'Login' : 'Registar'}
+                {isLoading ? 'A abrir login…' : 'Continuar para login'}
               </Text>
-            )}
-          </Pressable>
+            </Pressable>
+          ) : (
+            <>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="nome"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="email local"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={styles.input}
+              />
+              <Pressable
+                style={styles.button}
+                onPress={handleLocalAuthenticate}
+                disabled={isLoading}
+              >
+                {isLoading ? <ActivityIndicator color={colors.background} size="small" /> : null}
+                <Text style={styles.buttonText}>
+                  {isLoading ? 'A entrar…' : 'Entrar localmente'}
+                </Text>
+              </Pressable>
+            </>
+          )}
 
           <Pressable
-            style={styles.toggleButton}
-            onPress={() => setIsLogin(!isLogin)}
-            disabled={isLoading}
-          >
-            <Text style={styles.toggleText}>
-              {isLogin
-                ? 'Não tem conta? Registar'
-                : 'Já tem conta? Login'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.button, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
+            style={[styles.button, styles.secondaryButton]}
             onPress={onClose}
             disabled={isLoading}
           >
-            <Text style={[styles.buttonText, { color: colors.foreground }]}>
-              Cancelar
-            </Text>
+            <Text style={[styles.buttonText, styles.secondaryText]}>Cancelar</Text>
           </Pressable>
         </View>
       </View>

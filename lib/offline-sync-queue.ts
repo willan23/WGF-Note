@@ -45,6 +45,7 @@ let offlineState: OfflineState = {
 let syncIntervalId: ReturnType<typeof setInterval> | null = null;
 let netInfoUnsubscribe: (() => void) | null = null; // NetInfo unsubscribe
 let syncCallbacks: Array<(state: OfflineState) => void> = [];
+const memoryStorage = new Map<string, string>();
 
 /**
  * Inicializa o serviço de sincronização offline
@@ -52,13 +53,13 @@ let syncCallbacks: Array<(state: OfflineState) => void> = [];
 export async function initializeOfflineSync(): Promise<void> {
   try {
     // Carregar fila do armazenamento
-    const storedQueue = await AsyncStorage.getItem(QUEUE_STORAGE_KEY);
+    const storedQueue = await readStorage(QUEUE_STORAGE_KEY);
     if (storedQueue) {
       syncQueue = JSON.parse(storedQueue);
     }
 
     // Carregar estado offline
-    const storedState = await AsyncStorage.getItem(OFFLINE_STATE_KEY);
+    const storedState = await readStorage(OFFLINE_STATE_KEY);
     if (storedState) {
       offlineState = JSON.parse(storedState);
     }
@@ -289,12 +290,9 @@ async function handleConnectivityChange(state: any): Promise<void> {
 
 async function syncItemToBackend(item: SyncQueueItem): Promise<boolean> {
   try {
-    // Simular chamada ao backend
-    // Em produção, isto seria uma chamada HTTP real
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Simular sucesso aleatório para testes
-    return Math.random() > 0.1; // 90% de sucesso
+    // Placeholder determinístico até existir backend real.
+    await Promise.resolve(item);
+    return true;
   } catch (error) {
     console.error('Erro ao sincronizar item:', error);
     return false;
@@ -315,7 +313,7 @@ function startAutoSync(): void {
 
 async function saveSyncQueue(): Promise<void> {
   try {
-    await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(syncQueue));
+    await writeStorage(QUEUE_STORAGE_KEY, JSON.stringify(syncQueue));
   } catch (error) {
     console.error('Erro ao guardar fila de sincronização:', error);
   }
@@ -323,7 +321,7 @@ async function saveSyncQueue(): Promise<void> {
 
 async function saveOfflineState(): Promise<void> {
   try {
-    await AsyncStorage.setItem(OFFLINE_STATE_KEY, JSON.stringify(offlineState));
+    await writeStorage(OFFLINE_STATE_KEY, JSON.stringify(offlineState));
   } catch (error) {
     console.error('Erro ao guardar estado offline:', error);
   }
@@ -343,6 +341,7 @@ function notifyStateChange(): void {
  * Exporta função para testes
  */
 export function _resetForTesting(): void {
+  cleanupOfflineSync();
   syncQueue = [];
   offlineState = {
     isOnline: true,
@@ -352,4 +351,25 @@ export function _resetForTesting(): void {
     isSyncing: false,
   };
   syncCallbacks = [];
+  memoryStorage.clear();
+}
+
+export function _setOnlineForTesting(isOnline: boolean): void {
+  offlineState.isOnline = isOnline;
+}
+
+async function readStorage(key: string): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(key);
+  } catch {
+    return memoryStorage.get(key) ?? null;
+  }
+}
+
+async function writeStorage(key: string, value: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch {
+    memoryStorage.set(key, value);
+  }
 }

@@ -1,4 +1,13 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from "drizzle-orm/mysql-core";
+import { CODE_LANGUAGES } from "../shared/languages";
 
 /**
  * Core user table backing auth flow.
@@ -25,4 +34,45 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+export const cloudFiles = mysqlTable(
+  "cloudFiles",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    relativePath: varchar("relativePath", { length: 512 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    language: mysqlEnum("language", CODE_LANGUAGES).notNull(),
+    content: text("content").notNull(),
+    revision: int("revision").default(1).notNull(),
+    deletedAt: timestamp("deletedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    ownerPathUnique: uniqueIndex("cloudFiles_owner_path_unique").on(
+      table.ownerId,
+      table.relativePath,
+    ),
+  }),
+);
+
+export const cloudFileCollaborators = mysqlTable(
+  "cloudFileCollaborators",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    fileId: int("fileId").notNull(),
+    userId: int("userId").notNull(),
+    role: mysqlEnum("role", ["viewer", "editor"]).default("editor").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    fileUserUnique: uniqueIndex("cloudFileCollaborators_file_user_unique").on(
+      table.fileId,
+      table.userId,
+    ),
+  }),
+);
+
+export type CloudFile = typeof cloudFiles.$inferSelect;
+export type InsertCloudFile = typeof cloudFiles.$inferInsert;
+export type CloudFileCollaborator = typeof cloudFileCollaborators.$inferSelect;

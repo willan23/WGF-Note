@@ -20,11 +20,6 @@ interface CodeTemplatesProps {
   onClose: () => void;
 }
 
-interface TemplateSection {
-  title: string;
-  data: CodeTemplate[];
-}
-
 export function CodeTemplates({
   visible,
   onSelectTemplate,
@@ -241,4 +236,3 @@ export function CodeTemplates({
     </Modal>
   );
 }
-

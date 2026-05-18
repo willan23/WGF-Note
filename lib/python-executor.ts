@@ -1,48 +1,4 @@
-/**
- * Serviço para executar código Python via backend
- */
-
 import { ExecutionResult } from './types';
-
-/**
- * Interface para requisição de execução de código
- */
-interface ExecutionRequest {
-  code: string;
-  timeout?: number;
-  args?: string[];
-}
-
-/**
- * Executa código Python no backend
- */
-export async function executePythonCode(
-  code: string,
-  timeout: number = 5000,
-  args: string[] = []
-): Promise<ExecutionResult> {
-  const startTime = Date.now();
-  try {
-    // TODO: Integrar com backend real
-    // Por enquanto, retorna um resultado simulado
-    const result: ExecutionResult = {
-      stdout: `# Execução simulada\n# Código: ${code.substring(0, 50)}...\n`,
-      stderr: '',
-      exitCode: 0,
-      executionTime: Date.now() - startTime,
-    };
-
-    return result;
-  } catch (error) {
-    const executionTime = Date.now() - startTime;
-    return {
-      stdout: '',
-      stderr: `Erro ao executar código: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
-      exitCode: 1,
-      executionTime,
-    };
-  }
-}
 
 /**
  * Valida código Python antes de executar

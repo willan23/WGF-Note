@@ -6,15 +6,16 @@ import { extractPythonSymbols } from '@/lib/python-analyzer';
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { router } from 'expo-router';
+import { getOffsetFromLineAndColumn } from '@/lib/editor-state';
 
 export default function SymbolsScreen() {
   const colors = useColors();
-  const { state, setCursorPosition } = useEditor();
+  const { state, selectRange, currentLanguage } = useEditor();
 
   const symbols = useMemo(() => {
-    if (!state.currentFile) return [];
+    if (!state.currentFile || currentLanguage !== 'python') return [];
     return extractPythonSymbols(state.currentFile.content);
-  }, [state.currentFile?.content]);
+  }, [currentLanguage, state.currentFile]);
 
   const styles = StyleSheet.create({
     container: {
@@ -94,7 +95,12 @@ export default function SymbolsScreen() {
   };
 
   const handleSymbolPress = (line: number) => {
-    setCursorPosition(line - 1, 0);
+    const offset = getOffsetFromLineAndColumn(
+      state.currentFile?.content ?? '',
+      Math.max(0, line - 1),
+      0,
+    );
+    selectRange(offset, offset);
     router.push('/(tabs)');
   };
 
@@ -135,7 +141,9 @@ export default function SymbolsScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="search-outline" size={64} color={colors.border} />
             <Text style={styles.emptyText}>
-              Nenhum símbolo encontrado no ficheiro atual
+              {currentLanguage === 'python'
+                ? 'Nenhum símbolo encontrado no ficheiro atual'
+                : 'A lista de símbolos ainda está disponível apenas para Python'}
             </Text>
           </View>
         )}
@@ -143,4 +151,3 @@ export default function SymbolsScreen() {
     </ScreenContainer>
   );
 }
-

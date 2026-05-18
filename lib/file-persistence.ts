@@ -3,7 +3,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CodeLanguage } from './types-extended';
+import type { CodeLanguage } from './types-extended';
 
 export interface PersistedFile {
   id: string;

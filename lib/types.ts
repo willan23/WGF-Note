@@ -2,13 +2,19 @@
  * Tipos e interfaces compartilhadas da aplicação Python Notepad++
  */
 
+import type { CodeLanguage } from './types-extended';
+
 export interface PythonFile {
   id: string;
   name: string;
-  path: string;
+  path: string | null;
+  uri: string | null;
+  language: CodeLanguage;
   content: string;
+  savedContent: string;
   lastModified: number;
   isModified: boolean;
+  isDraft: boolean;
   encoding: string;
   lineCount: number;
   charCount: number;
@@ -17,6 +23,14 @@ export interface PythonFile {
 export interface EditorState {
   currentFile: PythonFile | null;
   openFiles: PythonFile[];
+  cursorLine: number;
+  cursorColumn: number;
+  selectionStart: number;
+  selectionEnd: number;
+  viewStateByFileId: Record<string, EditorViewState>;
+}
+
+export interface EditorViewState {
   cursorLine: number;
   cursorColumn: number;
   selectionStart: number;
@@ -34,6 +48,9 @@ export interface AppSettings {
   autoSaveInterval: number;
   showLineNumbers: boolean;
   showWhitespace: boolean;
+  localAiEnabled: boolean;
+  localAiBaseUrl: string;
+  localAiModel: string;
 }
 
 export interface PythonSymbol {

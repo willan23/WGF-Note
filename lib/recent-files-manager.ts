@@ -85,6 +85,18 @@ export async function removeRecentFile(id: string): Promise<void> {
     await saveRecentFiles(filtered);
 }
 
+export async function removeRecentFilesByPath(path: string, includeDescendants: boolean = false): Promise<void> {
+    const recentFiles = await loadRecentFiles();
+    const normalizedPath = path.replace(/\/+$/, '');
+    const filtered = recentFiles.filter((file) => {
+        const normalizedFilePath = file.path.replace(/\/+$/, '');
+        return includeDescendants
+            ? normalizedFilePath !== normalizedPath && !normalizedFilePath.startsWith(`${normalizedPath}/`)
+            : normalizedFilePath !== normalizedPath;
+    });
+    await saveRecentFiles(filtered);
+}
+
 /**
  * Limpa todos os ficheiros recentes
  */
@@ -97,7 +109,7 @@ export async function clearRecentFiles(): Promise<void> {
  */
 export async function getRecentFiles(limit?: number): Promise<RecentFile[]> {
     const files = await loadRecentFiles();
-    const sorted = files.sort((a, b) => b.lastOpened - a.lastOpened);
+    const sorted = [...files].sort((a, b) => b.lastOpened - a.lastOpened);
     return limit ? sorted.slice(0, limit) : sorted;
 }
 
@@ -134,6 +146,43 @@ export async function updateRecentFile(
     }
 }
 
+export async function renameRecentPaths(
+    oldPath: string,
+    newPath: string,
+    includeDescendants: boolean = false,
+): Promise<void> {
+    const recentFiles = await loadRecentFiles();
+    const normalizedOldPath = oldPath.replace(/\/+$/, '');
+    const normalizedNewPath = newPath.replace(/\/+$/, '');
+    let changed = false;
+
+    const nextFiles = recentFiles.map((file) => {
+        const normalizedFilePath = file.path.replace(/\/+$/, '');
+        const affected = includeDescendants
+            ? normalizedFilePath === normalizedOldPath || normalizedFilePath.startsWith(`${normalizedOldPath}/`)
+            : normalizedFilePath === normalizedOldPath;
+
+        if (!affected) return file;
+
+        changed = true;
+        const path = normalizedFilePath === normalizedOldPath
+            ? normalizedNewPath
+            : `${normalizedNewPath}${normalizedFilePath.slice(normalizedOldPath.length)}`;
+        const name = path.substring(path.lastIndexOf('/') + 1);
+
+        return {
+            ...file,
+            name,
+            path,
+            lastOpened: Date.now(),
+        };
+    });
+
+    if (changed) {
+        await saveRecentFiles(nextFiles);
+    }
+}
+
 /**
  * Obtém estatísticas dos ficheiros recentes
  */
@@ -155,7 +204,7 @@ export async function getRecentFilesStats(): Promise<{
         totalSize += file.size || 0;
     });
 
-    const sorted = files.sort((a, b) => b.lastOpened - a.lastOpened);
+    const sorted = [...files].sort((a, b) => b.lastOpened - a.lastOpened);
 
     return {
         total: files.length,

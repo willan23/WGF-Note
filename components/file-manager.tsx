@@ -1,78 +1,94 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
+  Alert,
+  FlatList,
   Modal,
-  ScrollView,
   Pressable,
   StyleSheet,
-  FlatList,
+  Text,
   TextInput,
-  Alert,
+  View,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import {
-  listFiles,
+  createDirectory,
+  createFile,
   deleteFileOrDirectory,
-  FileInfo,
+  fileExists,
+  getParentDirectoryUri,
+  getProjectsDirectoryUri,
+  listFiles,
+  renameFileOrDirectory,
+  type FileInfo,
 } from '@/lib/file-system-manager';
-import { getRecentFiles, RecentFile } from '@/lib/recent-files-manager';
+import {
+  getRecentFiles,
+  removeRecentFile,
+  type RecentFile,
+} from '@/lib/recent-files-manager';
+import { useEditor } from '@/lib/editor-context';
 
 interface FileManagerProps {
   visible: boolean;
   onSelectFile: (file: FileInfo | RecentFile) => void;
-  onCreateNew: (name: string) => void;
   onClose: () => void;
 }
 
 type TabType = 'all' | 'recent';
+type CreateMode = 'file' | 'folder' | null;
 
 export function FileManager({
   visible,
   onSelectFile,
-  onCreateNew,
   onClose,
 }: FileManagerProps) {
   const colors = useColors();
+  const { renameWorkspacePath, removeWorkspacePath } = useEditor();
+  const rootDirectoryUri = useMemo(() => getProjectsDirectoryUri(), []);
+  const [currentDirectoryUri, setCurrentDirectoryUri] = useState(rootDirectoryUri);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('all');
-  const [newFileName, setNewFileName] = useState('');
-  const [showNewFileInput, setShowNewFileInput] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateMode>(null);
+  const [newEntryName, setNewEntryName] = useState('');
+  const [renamingItem, setRenamingItem] = useState<FileInfo | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
-  useEffect(() => {
-    if (visible) {
-      loadFiles();
-    }
-  }, [visible]);
-
-  const loadFiles = async () => {
+  const loadFiles = useCallback(async () => {
     try {
-      const allFiles = await listFiles();
-      const recent = await getRecentFiles();
+      const [allFiles, recent] = await Promise.all([
+        listFiles(currentDirectoryUri),
+        getRecentFiles(),
+      ]);
       setFiles(allFiles);
       setRecentFiles(recent);
     } catch (error) {
       console.error('Erro ao carregar ficheiros:', error);
     }
-  };
+  }, [currentDirectoryUri]);
+
+  useEffect(() => {
+    if (visible) {
+      loadFiles();
+    }
+  }, [loadFiles, visible]);
 
   const handleDeleteFile = useCallback(
-    (path: string, fileName: string) => {
+    (file: FileInfo) => {
       Alert.alert(
-        'Eliminar Ficheiro',
-        `Tem a certeza que deseja eliminar "${fileName}"?`,
+        file.isDirectory ? 'Eliminar Pasta' : 'Eliminar Ficheiro',
+        `Tem a certeza que deseja eliminar "${file.name}"?`,
         [
           {
             text: 'Cancelar',
-            onPress: () => { },
             style: 'cancel',
           },
           {
             text: 'Eliminar',
             onPress: async () => {
               try {
-                await deleteFileOrDirectory(path);
+                await deleteFileOrDirectory(file.uri, file.isDirectory);
+                await removeWorkspacePath(file.uri, file.isDirectory);
                 await loadFiles();
               } catch (error) {
                 console.error('Erro ao eliminar:', error);
@@ -80,270 +96,416 @@ export function FileManager({
             },
             style: 'destructive',
           },
-        ]
+        ],
       );
     },
-    []
+    [loadFiles, removeWorkspacePath],
   );
 
-  const handleCreateNew = useCallback(() => {
-    if (newFileName.trim()) {
-      onCreateNew(newFileName);
-      setNewFileName('');
-      setShowNewFileInput(false);
-      onClose();
+  const handleCreateEntry = useCallback(async () => {
+    const trimmedName = newEntryName.trim();
+    if (!trimmedName || !createMode) return;
+
+    try {
+      if (createMode === 'file') {
+        const uri = await createFile(trimmedName, '', currentDirectoryUri);
+        onSelectFile({
+          uri,
+          name: trimmedName,
+          size: 0,
+          modificationTime: Date.now(),
+          isDirectory: false,
+        });
+        onClose();
+      } else {
+        await createDirectory(trimmedName, currentDirectoryUri);
+        await loadFiles();
+      }
+
+      setCreateMode(null);
+      setNewEntryName('');
+    } catch (error) {
+      console.error('Erro ao criar entrada:', error);
     }
-  }, [newFileName, onCreateNew, onClose]);
+  }, [
+    createMode,
+    currentDirectoryUri,
+    loadFiles,
+    newEntryName,
+    onClose,
+    onSelectFile,
+  ]);
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
-    },
-    modal: {
-      backgroundColor: colors.background,
-      borderTopLeftRadius: 12,
-      borderTopRightRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 16,
-      maxHeight: '90%',
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 16,
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    title: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.foreground,
-    },
-    closeButton: {
-      padding: 8,
-    },
-    closeText: {
-      fontSize: 20,
-      color: colors.muted,
-    },
-    tabs: {
-      flexDirection: 'row',
-      gap: 8,
-      marginBottom: 16,
-    },
-    tab: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 6,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    tabActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-    },
-    tabText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.foreground,
-    },
-    tabTextActive: {
-      color: colors.background,
-    },
-    newFileSection: {
-      marginBottom: 16,
-      gap: 8,
-    },
-    newFileInput: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      color: colors.foreground,
-      fontSize: 14,
-    },
-    buttonRow: {
-      flexDirection: 'row',
-      gap: 8,
-    },
-    button: {
-      flex: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 6,
-      alignItems: 'center',
-    },
-    buttonPrimary: {
-      backgroundColor: colors.primary,
-    },
-    buttonSecondary: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    buttonText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.background,
-    },
-    buttonTextSecondary: {
-      color: colors.foreground,
-    },
-    fileItem: {
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      backgroundColor: colors.surface,
-      borderRadius: 6,
-      marginBottom: 8,
-      borderLeftWidth: 3,
-      borderLeftColor: colors.primary,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    fileInfo: {
-      flex: 1,
-    },
-    fileName: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.foreground,
-      marginBottom: 2,
-    },
-    fileDetails: {
-      fontSize: 11,
-      color: colors.muted,
-    },
-    fileActions: {
-      flexDirection: 'row',
-      gap: 8,
-    },
-    actionButton: {
-      padding: 6,
-    },
-    actionText: {
-      fontSize: 16,
-    },
-    emptyState: {
-      padding: 20,
-      alignItems: 'center',
-    },
-    emptyText: {
-      fontSize: 14,
-      color: colors.muted,
-      textAlign: 'center',
-    },
-  });
+  const handleRename = useCallback(async () => {
+    if (!renamingItem || !renameValue.trim()) return;
 
-  const renderFileItem = ({ item }: { item: FileInfo | RecentFile }) => {
-    const isRecent = 'lastOpened' in item;
-    const path = isRecent ? (item as RecentFile).path : (item as FileInfo).uri;
-    const name = item.name;
-    const modificationTime = isRecent ? (item as RecentFile).lastOpened : (item as FileInfo).modificationTime;
-    const date = modificationTime ? new Date(modificationTime).toLocaleDateString('pt-PT') : 'N/A';
-    const language = isRecent ? (item as RecentFile).language : '';
+    try {
+      const renamedUri = await renameFileOrDirectory(
+        renamingItem.uri,
+        renameValue.trim(),
+        renamingItem.isDirectory,
+      );
+      await renameWorkspacePath(renamingItem.uri, renamedUri, renamingItem.isDirectory);
+      setRenamingItem(null);
+      setRenameValue('');
+      await loadFiles();
+    } catch (error) {
+      console.error('Erro ao renomear:', error);
+    }
+  }, [loadFiles, renameValue, renameWorkspacePath, renamingItem]);
+
+  const handleSelectRecentFile = useCallback(
+    async (file: RecentFile) => {
+      if (!(await fileExists(file.path))) {
+        await removeRecentFile(file.id);
+        await loadFiles();
+        Alert.alert('Ficheiro indisponível', 'Este ficheiro já não existe no dispositivo.');
+        return;
+      }
+
+      onSelectFile(file);
+      onClose();
+    },
+    [loadFiles, onClose, onSelectFile],
+  );
+
+  const handleSelectFile = useCallback(
+    (file: FileInfo) => {
+      if (file.isDirectory) {
+        setCurrentDirectoryUri(file.uri);
+        return;
+      }
+
+      onSelectFile(file);
+      onClose();
+    },
+    [onClose, onSelectFile],
+  );
+
+  const handleGoUp = useCallback(() => {
+    const parent = getParentDirectoryUri(currentDirectoryUri);
+    if (parent && currentDirectoryUri !== rootDirectoryUri) {
+      setCurrentDirectoryUri(parent);
+    }
+  }, [currentDirectoryUri, rootDirectoryUri]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          justifyContent: 'flex-end',
+        },
+        modal: {
+          backgroundColor: colors.background,
+          borderTopLeftRadius: 12,
+          borderTopRightRadius: 12,
+          paddingHorizontal: 16,
+          paddingVertical: 16,
+          maxHeight: '90%',
+        },
+        header: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 12,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        },
+        title: {
+          fontSize: 18,
+          fontWeight: '600',
+          color: colors.foreground,
+        },
+        pathText: {
+          fontSize: 11,
+          color: colors.muted,
+          marginTop: 4,
+        },
+        closeButton: {
+          padding: 8,
+        },
+        closeText: {
+          fontSize: 20,
+          color: colors.muted,
+        },
+        navRow: {
+          flexDirection: 'row',
+          gap: 8,
+          marginBottom: 12,
+        },
+        tabs: {
+          flexDirection: 'row',
+          gap: 8,
+          marginBottom: 12,
+        },
+        tab: {
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 6,
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        tabActive: {
+          backgroundColor: colors.primary,
+          borderColor: colors.primary,
+        },
+        tabText: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.foreground,
+        },
+        tabTextActive: {
+          color: colors.background,
+        },
+        inputSection: {
+          marginBottom: 16,
+          gap: 8,
+        },
+        input: {
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 6,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          color: colors.foreground,
+          fontSize: 14,
+        },
+        buttonRow: {
+          flexDirection: 'row',
+          gap: 8,
+        },
+        button: {
+          flex: 1,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 6,
+          alignItems: 'center',
+        },
+        buttonPrimary: {
+          backgroundColor: colors.primary,
+        },
+        buttonSecondary: {
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        buttonText: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.background,
+        },
+        buttonTextSecondary: {
+          color: colors.foreground,
+        },
+        fileItem: {
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          backgroundColor: colors.surface,
+          borderRadius: 6,
+          marginBottom: 8,
+          borderLeftWidth: 3,
+          borderLeftColor: colors.primary,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        },
+        fileInfo: {
+          flex: 1,
+        },
+        fileName: {
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.foreground,
+          marginBottom: 2,
+        },
+        fileDetails: {
+          fontSize: 11,
+          color: colors.muted,
+        },
+        fileActions: {
+          flexDirection: 'row',
+          gap: 8,
+        },
+        actionButton: {
+          padding: 6,
+        },
+        actionText: {
+          fontSize: 16,
+        },
+        emptyState: {
+          padding: 20,
+          alignItems: 'center',
+        },
+        emptyText: {
+          fontSize: 14,
+          color: colors.muted,
+          textAlign: 'center',
+        },
+      }),
+    [
+      colors.background,
+      colors.border,
+      colors.foreground,
+      colors.muted,
+      colors.primary,
+      colors.surface,
+    ],
+  );
+
+  const renderFileItem = ({ item }: { item: FileInfo }) => {
+    const date = item.modificationTime
+      ? new Date(item.modificationTime).toLocaleDateString('pt-PT')
+      : 'N/A';
 
     return (
-      <Pressable
-        style={styles.fileItem}
-        onPress={() => {
-          onSelectFile(item);
-          onClose();
-        }}
-      >
+      <Pressable style={styles.fileItem} onPress={() => handleSelectFile(item)}>
         <View style={styles.fileInfo}>
-          <Text style={styles.fileName}>{name}</Text>
+          <Text style={styles.fileName}>{item.isDirectory ? `📁 ${item.name}` : item.name}</Text>
           <Text style={styles.fileDetails}>
-            {language ? `${language.toUpperCase()} • ` : ''}{date}
+            {item.isDirectory ? 'Pasta' : `${(item.size / 1024).toFixed(1)} KB`} • {date}
           </Text>
         </View>
-        {!isRecent && (
-          <View style={styles.fileActions}>
-            <Pressable
-              style={styles.actionButton}
-              onPress={() => handleDeleteFile(path, name)}
-            >
-              <Text style={styles.actionText}>🗑️</Text>
-            </Pressable>
-          </View>
-        )}
+        <View style={styles.fileActions}>
+          <Pressable
+            style={styles.actionButton}
+            onPress={() => {
+              setRenamingItem(item);
+              setRenameValue(item.name);
+            }}
+          >
+            <Text style={styles.actionText}>✏️</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => handleDeleteFile(item)}>
+            <Text style={styles.actionText}>🗑️</Text>
+          </Pressable>
+        </View>
       </Pressable>
     );
   };
 
+  const renderRecentItem = ({ item }: { item: RecentFile }) => (
+    <Pressable style={styles.fileItem} onPress={() => handleSelectRecentFile(item)}>
+      <View style={styles.fileInfo}>
+        <Text style={styles.fileName}>{item.name}</Text>
+        <Text style={styles.fileDetails}>
+          {(item.language ?? 'ficheiro').toUpperCase()} •{' '}
+          {new Date(item.lastOpened).toLocaleDateString('pt-PT')}
+        </Text>
+      </View>
+    </Pressable>
+  );
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.container}>
         <View style={styles.modal}>
           <View style={styles.header}>
-            <Text style={styles.title}>Gestor de Ficheiros</Text>
+            <View>
+              <Text style={styles.title}>Gestor de Ficheiros</Text>
+              <Text style={styles.pathText}>{currentDirectoryUri}</Text>
+            </View>
             <Pressable style={styles.closeButton} onPress={onClose}>
               <Text style={styles.closeText}>✕</Text>
             </Pressable>
           </View>
 
-          {showNewFileInput ? (
-            <View style={styles.newFileSection}>
+          <View style={styles.navRow}>
+            <Pressable
+              style={[styles.button, styles.buttonSecondary]}
+              onPress={handleGoUp}
+              disabled={currentDirectoryUri === rootDirectoryUri}
+            >
+              <Text style={[styles.buttonText, styles.buttonTextSecondary]}>↑ Subir</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.button, styles.buttonPrimary]}
+              onPress={() => setCreateMode('file')}
+            >
+              <Text style={styles.buttonText}>+ Ficheiro</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.button, styles.buttonSecondary]}
+              onPress={() => setCreateMode('folder')}
+            >
+              <Text style={[styles.buttonText, styles.buttonTextSecondary]}>+ Pasta</Text>
+            </Pressable>
+          </View>
+
+          {createMode ? (
+            <View style={styles.inputSection}>
               <TextInput
-                style={styles.newFileInput}
-                placeholder="Nome do ficheiro (ex: script.py)"
+                style={styles.input}
+                placeholder={
+                  createMode === 'file'
+                    ? 'Nome do ficheiro (ex: script.py)'
+                    : 'Nome da pasta'
+                }
                 placeholderTextColor={colors.muted}
-                value={newFileName}
-                onChangeText={setNewFileName}
+                value={newEntryName}
+                onChangeText={setNewEntryName}
                 autoFocus
               />
               <View style={styles.buttonRow}>
                 <Pressable
                   style={[styles.button, styles.buttonPrimary]}
-                  onPress={handleCreateNew}
+                  onPress={handleCreateEntry}
                 >
                   <Text style={styles.buttonText}>Criar</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.button, styles.buttonSecondary]}
                   onPress={() => {
-                    setShowNewFileInput(false);
-                    setNewFileName('');
+                    setCreateMode(null);
+                    setNewEntryName('');
                   }}
                 >
-                  <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
-                    Cancelar
-                  </Text>
+                  <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Cancelar</Text>
                 </Pressable>
               </View>
             </View>
-          ) : (
-            <Pressable
-              style={[styles.button, styles.buttonPrimary, { marginBottom: 16 }]}
-              onPress={() => setShowNewFileInput(true)}
-            >
-              <Text style={styles.buttonText}>+ Novo Ficheiro</Text>
-            </Pressable>
-          )}
+          ) : null}
+
+          {renamingItem ? (
+            <View style={styles.inputSection}>
+              <TextInput
+                style={styles.input}
+                placeholder="Novo nome"
+                placeholderTextColor={colors.muted}
+                value={renameValue}
+                onChangeText={setRenameValue}
+                autoFocus
+              />
+              <View style={styles.buttonRow}>
+                <Pressable
+                  style={[styles.button, styles.buttonPrimary]}
+                  onPress={handleRename}
+                >
+                  <Text style={styles.buttonText}>Renomear</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={() => {
+                    setRenamingItem(null);
+                    setRenameValue('');
+                  }}
+                >
+                  <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Cancelar</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.tabs}>
             <Pressable
               style={[styles.tab, activeTab === 'all' && styles.tabActive]}
               onPress={() => setActiveTab('all')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === 'all' && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
                 Todos ({files.length})
               </Text>
             </Pressable>
@@ -351,12 +513,7 @@ export function FileManager({
               style={[styles.tab, activeTab === 'recent' && styles.tabActive]}
               onPress={() => setActiveTab('recent')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === 'recent' && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === 'recent' && styles.tabTextActive]}>
                 Recentes ({recentFiles.length})
               </Text>
             </Pressable>
@@ -367,29 +524,25 @@ export function FileManager({
               <FlatList
                 data={files}
                 renderItem={renderFileItem}
-                keyExtractor={item => item.uri}
-                scrollEnabled={true}
+                keyExtractor={(item) => item.uri}
                 showsVerticalScrollIndicator={false}
               />
             ) : (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>Nenhum ficheiro criado ainda</Text>
+                <Text style={styles.emptyText}>Nenhum ficheiro neste diretório</Text>
               </View>
             )
+          ) : recentFiles.length > 0 ? (
+            <FlatList
+              data={recentFiles}
+              renderItem={renderRecentItem}
+              keyExtractor={(item) => item.path}
+              showsVerticalScrollIndicator={false}
+            />
           ) : (
-            recentFiles.length > 0 ? (
-              <FlatList
-                data={recentFiles}
-                renderItem={renderFileItem}
-                keyExtractor={item => item.id}
-                scrollEnabled={true}
-                showsVerticalScrollIndicator={false}
-              />
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>Nenhum ficheiro recente</Text>
-              </View>
-            )
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Nenhum ficheiro recente</Text>
+            </View>
           )}
         </View>
       </View>

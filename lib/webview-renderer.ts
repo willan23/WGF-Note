@@ -189,8 +189,13 @@ export function extractCodeFromHTML(html: string): {
 /**
  * Valida se o código HTML é válido
  */
-export function validateHTML(html: string): { valid: boolean; errors: string[] } {
+export function validateHTML(html: string): {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   // Verificar tags não fechadas
   const openTags = html.match(/<([a-z][a-z0-9]*)[^>]*>/gi) || [];
@@ -208,14 +213,14 @@ export function validateHTML(html: string): { valid: boolean; errors: string[] }
     }
   }
 
-  // Verificar DOCTYPE (Opcional no editor)
-  /* if (!html.match(/<!DOCTYPE\s+html>/i)) {
-    errors.push('DOCTYPE não encontrado');
-  } */
+  if (!html.match(/<!DOCTYPE\s+html>/i)) {
+    warnings.push('DOCTYPE não encontrado');
+  }
 
   return {
     valid: errors.length === 0,
     errors,
+    warnings,
   };
 }
 

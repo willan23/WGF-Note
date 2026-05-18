@@ -1,0 +1,21 @@
+appId: com.notepyplusplus.desktop
+productName: Note Py++
+directories:
+  app: desktop-app
+  output: release
+files:
+  - "**/*"
+extraMetadata:
+  main: main.cjs
+asar: true
+asarUnpack:
+  - server-dist/**
+beforeBuild: ./desktop/skip-dependency-rebuild.cjs
+win:
+  icon: icon.png
+  target:
+    - nsis
+  artifactName: "Note-Py-Plus-Plus-${version}-Setup.${ext}"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

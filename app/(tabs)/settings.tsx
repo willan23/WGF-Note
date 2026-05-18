@@ -1,14 +1,25 @@
-import { View, Text, Pressable, StyleSheet, ScrollView, Switch } from 'react-native';
+import {
+  Alert,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  Switch,
+  TextInput,
+} from 'react-native';
+import { useMemo } from 'react';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
-import { useState } from 'react';
+import { listOllamaModels } from '@/lib/local-ai';
 
 export default function SettingsScreen() {
   const colors = useColors();
   const { settings, updateSettings } = useEditor();
-  const [localSettings, setLocalSettings] = useState(settings);
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
@@ -103,12 +114,71 @@ export default function SettingsScreen() {
       fontWeight: '600',
       color: colors.foreground,
     },
-  });
+    textInput: {
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      color: colors.foreground,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+    },
+    inlineActionButton: {
+      marginTop: 12,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 999,
+      backgroundColor: colors.primary,
+    },
+    inlineActionText: {
+      color: colors.background,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    fieldGroup: {
+      paddingVertical: 8,
+    },
+    footer: {
+      padding: 40,
+      alignItems: 'center',
+    },
+    footerText: {
+      color: colors.muted,
+      fontSize: 12,
+    },
+  }),
+    [
+      colors.background,
+      colors.border,
+      colors.foreground,
+      colors.muted,
+      colors.primary,
+      colors.surface,
+    ],
+  );
 
-  const handleUpdate = (updates: Partial<typeof localSettings>) => {
-    const newSettings = { ...localSettings, ...updates };
-    setLocalSettings(newSettings);
+  const handleUpdate = (updates: Partial<typeof settings>) => {
     updateSettings(updates);
+  };
+
+  const handleTestLocalAI = async () => {
+    try {
+      const models = await listOllamaModels(settings.localAiBaseUrl);
+      Alert.alert(
+        'Ligação concluída',
+        models.length > 0
+          ? `Modelos disponíveis: ${models.map((model) => model.name).join(', ')}`
+          : 'O Ollama respondeu, mas ainda não há modelos instalados.',
+      );
+    } catch (error) {
+      Alert.alert(
+        'Ligação falhou',
+        error instanceof Error ? error.message : 'Não foi possível contactar a IA local.',
+      );
+    }
   };
 
   return (
@@ -130,10 +200,10 @@ export default function SettingsScreen() {
             </View>
             <Pressable
               style={styles.pickerButton}
-              onPress={() => handleUpdate({ theme: localSettings.theme === 'dark' ? 'light' : 'dark' })}
+              onPress={() => handleUpdate({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
             >
               <Text style={styles.pickerButtonText}>
-                {localSettings.theme === 'dark' ? '🌙 Escuro' : '☀️ Claro'}
+                {settings.theme === 'dark' ? '🌙 Escuro' : '☀️ Claro'}
               </Text>
             </Pressable>
           </View>
@@ -144,11 +214,11 @@ export default function SettingsScreen() {
               <Text style={styles.settingDescription}>Ajuste a escala do texto no editor</Text>
             </View>
             <View style={styles.controls}>
-              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ fontSize: Math.max(10, localSettings.fontSize - 1) })}>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ fontSize: Math.max(10, settings.fontSize - 1) })}>
                 <Text style={styles.controlButtonText}>−</Text>
               </Pressable>
-              <Text style={styles.controlValue}>{localSettings.fontSize}px</Text>
-              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ fontSize: Math.min(30, localSettings.fontSize + 1) })}>
+              <Text style={styles.controlValue}>{settings.fontSize}px</Text>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ fontSize: Math.min(30, settings.fontSize + 1) })}>
                 <Text style={styles.controlButtonText}>+</Text>
               </Pressable>
             </View>
@@ -165,11 +235,11 @@ export default function SettingsScreen() {
               <Text style={styles.settingDescription}>Número de espaços por tabulação</Text>
             </View>
             <View style={styles.controls}>
-              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ indentSize: Math.max(2, localSettings.indentSize - 2) })}>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ indentSize: Math.max(2, settings.indentSize - 2) })}>
                 <Text style={styles.controlButtonText}>−</Text>
               </Pressable>
-              <Text style={styles.controlValue}>{localSettings.indentSize}</Text>
-              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ indentSize: Math.min(8, localSettings.indentSize + 2) })}>
+              <Text style={styles.controlValue}>{settings.indentSize}</Text>
+              <Pressable style={styles.controlButton} onPress={() => handleUpdate({ indentSize: Math.min(8, settings.indentSize + 2) })}>
                 <Text style={styles.controlButtonText}>+</Text>
               </Pressable>
             </View>
@@ -181,7 +251,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingDescription}>Mostrar contagem lateral no editor</Text>
             </View>
             <Switch
-              value={localSettings.showLineNumbers}
+              value={settings.showLineNumbers}
               onValueChange={(val) => handleUpdate({ showLineNumbers: val })}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
@@ -193,7 +263,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingDescription}>Quebra de linha automática</Text>
             </View>
             <Switch
-              value={localSettings.wordWrap}
+              value={settings.wordWrap}
               onValueChange={(val) => handleUpdate({ wordWrap: val })}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
@@ -210,25 +280,80 @@ export default function SettingsScreen() {
               <Text style={styles.settingDescription}>Guardar alterações automaticamente</Text>
             </View>
             <Switch
-              value={localSettings.autoSave}
+              value={settings.autoSave}
               onValueChange={(val) => handleUpdate({ autoSave: val })}
               trackColor={{ false: colors.border, true: colors.primary }}
             />
           </View>
 
-          {localSettings.autoSave && (
+          {settings.autoSave && (
             <View style={styles.settingItem}>
               <View style={styles.settingInfo}>
                 <Text style={styles.settingLabel}>Intervalo (ms)</Text>
                 <Text style={styles.settingDescription}>Tempo entre gravações</Text>
               </View>
-              <Text style={styles.controlValue}>{localSettings.autoSaveInterval}ms</Text>
+              <Text style={styles.controlValue}>{settings.autoSaveInterval}ms</Text>
             </View>
           )}
         </View>
 
-        <View style={{ padding: 40, alignItems: 'center' }}>
-          <Text style={{ color: colors.muted, fontSize: 12 }}>Python Notepad++ v1.0.0</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>IA local</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Ativar IA local</Text>
+              <Text style={styles.settingDescription}>
+                Usa um servidor Ollama teu, sem API paga.
+              </Text>
+            </View>
+            <Switch
+              value={settings.localAiEnabled}
+              onValueChange={(val) => handleUpdate({ localAiEnabled: val })}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.settingLabel}>Endereço do Ollama</Text>
+            <Text style={styles.settingDescription}>
+              No telemóvel real, use o IP do computador na rede local.
+            </Text>
+            <TextInput
+              accessibilityLabel="Endereço do Ollama"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="http://192.168.1.10:11434"
+              placeholderTextColor={colors.muted}
+              value={settings.localAiBaseUrl}
+              onChangeText={(value) => handleUpdate({ localAiBaseUrl: value })}
+              style={styles.textInput}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.settingLabel}>Modelo</Text>
+            <Text style={styles.settingDescription}>
+              Escreva o nome exato do modelo instalado no Ollama.
+            </Text>
+            <TextInput
+              accessibilityLabel="Modelo da IA local"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="ex: qwen2.5-coder:7b"
+              placeholderTextColor={colors.muted}
+              value={settings.localAiModel}
+              onChangeText={(value) => handleUpdate({ localAiModel: value })}
+              style={styles.textInput}
+            />
+            <Pressable style={styles.inlineActionButton} onPress={handleTestLocalAI}>
+              <Text style={styles.inlineActionText}>Testar ligação</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Python Notepad++ v1.0.0</Text>
         </View>
       </ScrollView>
     </View>

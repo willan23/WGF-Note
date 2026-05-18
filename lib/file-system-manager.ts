@@ -16,6 +16,8 @@ export interface FileInfo {
 
 export interface SaveOptions {
     encoding?: 'utf8' | 'base64';
+    directoryUri?: string;
+    fileUri?: string;
 }
 
 /**
@@ -23,34 +25,54 @@ export interface SaveOptions {
  * No Web, algumas operações nativas podem falhar durante a construção.
  */
 function createSafeFile(path: string): File | null {
+    if (Platform.OS === 'web') return null;
+
     try {
         return new File(path);
-    } catch (e) {
-        console.warn('Falha ao instanciar File (provavelmente Web):', e);
+    } catch {
         return null;
     }
 }
 
 function createSafeDirectory(path: string, name?: string): Directory | null {
+    if (Platform.OS === 'web') return null;
+
     try {
         const pathStr: string = typeof path === 'string' ? path : (path as any).uri;
         if (name) {
             return new Directory(pathStr as any, name);
         }
         return new Directory(pathStr as any);
-    } catch (e) {
-        console.warn('Falha ao instanciar Directory (provavelmente Web):', e);
+    } catch {
         return null;
     }
 }
 
 function getDocumentsPath(): string {
+    if (Platform.OS === 'web') {
+        return 'web://documents';
+    }
+
     try {
         const doc = Paths.document;
         return typeof doc === 'string' ? doc : (doc as any).uri || 'file:///documents';
-    } catch (e) {
+    } catch {
         return 'file:///documents';
     }
+}
+
+export function getProjectsDirectoryUri(): string {
+    const docDir = getDocumentsPath();
+    return createSafeDirectory(docDir, 'projects')?.uri ?? `${docDir.replace(/\/+$/, '')}/projects`;
+}
+
+export function getParentDirectoryUri(path: string): string | null {
+    const normalized = path.replace(/\/+$/, '');
+    const lastSlash = normalized.lastIndexOf('/');
+    if (lastSlash <= 'file://'.length) {
+        return null;
+    }
+    return normalized.slice(0, lastSlash + 1);
 }
 
 /**
@@ -60,8 +82,7 @@ export async function initFileSystem(): Promise<void> {
     if (Platform.OS === 'web') return;
 
     try {
-        const docDir = getDocumentsPath();
-        const projectsDir = createSafeDirectory(docDir, 'projects');
+        const projectsDir = createSafeDirectory(getProjectsDirectoryUri());
         if (projectsDir && !projectsDir.exists) {
             await projectsDir.create({ intermediates: true, idempotent: true });
         }
@@ -84,10 +105,13 @@ export async function saveFile(
             return `web-simulated://${fileName}`;
         }
 
-        const projectsDir = createSafeDirectory(getDocumentsPath(), 'projects');
-        if (!projectsDir) throw new Error('Sistema de ficheiros não disponível');
+        const parentDir = createSafeDirectory(options.directoryUri ?? getProjectsDirectoryUri());
+        if (!parentDir) throw new Error('Sistema de ficheiros não disponível');
 
-        const file = new File(projectsDir, fileName);
+        const file = options.fileUri
+            ? createSafeFile(options.fileUri)
+            : new File(parentDir, fileName);
+        if (!file) throw new Error('Ficheiro inválido');
         const encoding = options.encoding || 'utf8';
 
         await file.write(content, { encoding });
@@ -123,7 +147,7 @@ export async function listFiles(directoryPath?: string): Promise<FileInfo[]> {
     try {
         if (Platform.OS === 'web') return [];
 
-        const path = directoryPath || createSafeDirectory(getDocumentsPath(), 'projects')?.uri;
+        const path = directoryPath || getProjectsDirectoryUri();
         if (!path) return [];
 
         const dir = createSafeDirectory(path);
@@ -179,22 +203,31 @@ export async function listFiles(directoryPath?: string): Promise<FileInfo[]> {
  */
 export async function createFile(
     fileName: string,
-    content: string = ''
+    content: string = '',
+    directoryUri?: string,
 ): Promise<string> {
-    return saveFile(fileName, content);
+    return saveFile(fileName, content, { directoryUri });
+}
+
+/**
+ * Sobrescreve um ficheiro existente pelo seu URI completo.
+ */
+export async function writeFileContent(filePath: string, content: string): Promise<string> {
+    const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+    return saveFile(fileName, content, { fileUri: filePath });
 }
 
 /**
  * Cria nova pasta
  */
-export async function createDirectory(directoryName: string): Promise<string> {
+export async function createDirectory(directoryName: string, parentDirectoryUri?: string): Promise<string> {
     try {
         if (Platform.OS === 'web') return `web-simulated-dir://${directoryName}`;
 
-        const projectsDir = createSafeDirectory(getDocumentsPath(), 'projects');
-        if (!projectsDir) throw new Error('Sistema de ficheiros não disponível');
+        const parentDir = createSafeDirectory(parentDirectoryUri ?? getProjectsDirectoryUri());
+        if (!parentDir) throw new Error('Sistema de ficheiros não disponível');
 
-        const dir = new Directory(projectsDir, directoryName);
+        const dir = new Directory(parentDir, directoryName);
         await dir.create({ intermediates: true, idempotent: true });
         return dir.uri;
     } catch (error) {
@@ -206,11 +239,11 @@ export async function createDirectory(directoryName: string): Promise<string> {
 /**
  * Elimina ficheiro ou pasta
  */
-export async function deleteFileOrDirectory(path: string): Promise<void> {
+export async function deleteFileOrDirectory(path: string, isDirectory: boolean = false): Promise<void> {
     try {
         if (Platform.OS === 'web') return;
 
-        if (path.endsWith('/')) {
+        if (isDirectory) {
             const dir = createSafeDirectory(path);
             await dir?.delete();
         } else {
@@ -228,12 +261,13 @@ export async function deleteFileOrDirectory(path: string): Promise<void> {
  */
 export async function renameFileOrDirectory(
     oldPath: string,
-    newName: string
+    newName: string,
+    isDirectory: boolean = false,
 ): Promise<string> {
     try {
         if (Platform.OS === 'web') return `web-simulated-renamed://${newName}`;
 
-        if (oldPath.endsWith('/')) {
+        if (isDirectory) {
             const dir = createSafeDirectory(oldPath);
             await dir?.rename(newName);
             return dir?.uri || '';

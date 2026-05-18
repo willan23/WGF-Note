@@ -8,6 +8,8 @@ import {
   getHTMLContextSuggestions,
   getCSSContextSuggestions,
   getPythonContextSuggestions,
+  getJavaScriptContextSuggestions,
+  getSQLContextSuggestions,
   getContextSuggestions,
 } from './context-suggestions';
 
@@ -29,6 +31,13 @@ describe('Code Templates', () => {
       const templates = getTemplatesForLanguage('css');
       expect(templates.length).toBeGreaterThan(0);
       expect(templates[0].language).toBe('css');
+    });
+
+    it('deve retornar templates para novas linguagens', () => {
+      expect(getTemplatesForLanguage('javascript')[0]?.language).toBe('javascript');
+      expect(getTemplatesForLanguage('typescript')[0]?.language).toBe('typescript');
+      expect(getTemplatesForLanguage('markdown')[0]?.language).toBe('markdown');
+      expect(getTemplatesForLanguage('sql')[0]?.language).toBe('sql');
     });
   });
 
@@ -62,13 +71,13 @@ describe('Code Templates', () => {
 describe('Context Suggestions', () => {
   describe('getHTMLContextSuggestions', () => {
     it('deve sugerir tags HTML', () => {
-      const suggestions = getHTMLContextSuggestions('<d', 1, 2);
+      const suggestions = getHTMLContextSuggestions('<d', 0, 2);
       expect(suggestions.length).toBeGreaterThan(0);
       expect(suggestions[0].type).toBe('tag');
     });
 
     it('deve sugerir atributos HTML', () => {
-      const suggestions = getHTMLContextSuggestions('<a h', 1, 4);
+      const suggestions = getHTMLContextSuggestions('<a h', 0, 4);
       expect(suggestions.length).toBeGreaterThan(0);
       expect(suggestions.some(s => s.type === 'attribute')).toBe(true);
     });
@@ -76,13 +85,13 @@ describe('Context Suggestions', () => {
 
   describe('getCSSContextSuggestions', () => {
     it('deve sugerir propriedades CSS', () => {
-      const suggestions = getCSSContextSuggestions('div { c', 1, 8);
+      const suggestions = getCSSContextSuggestions('div { c', 0, 8);
       expect(suggestions.length).toBeGreaterThan(0);
       expect(suggestions.some(s => s.type === 'property')).toBe(true);
     });
 
     it('deve sugerir valores CSS', () => {
-      const suggestions = getCSSContextSuggestions('div {\n  display: ', 2, 11);
+      const suggestions = getCSSContextSuggestions('div {\n  display: ', 1, 11);
       expect(suggestions.length).toBeGreaterThan(0);
       // Pode ser property ou value dependendo da análise
       expect(suggestions.length).toBeGreaterThan(0);
@@ -91,30 +100,49 @@ describe('Context Suggestions', () => {
 
   describe('getPythonContextSuggestions', () => {
     it('deve sugerir keywords Python', () => {
-      const suggestions = getPythonContextSuggestions('d', 1, 1);
+      const suggestions = getPythonContextSuggestions('d', 0, 1);
       expect(suggestions.length).toBeGreaterThan(0);
     });
 
     it('deve sugerir funções built-in', () => {
-      const suggestions = getPythonContextSuggestions('p', 1, 1);
+      const suggestions = getPythonContextSuggestions('p', 0, 1);
       expect(suggestions.some(s => s.type === 'function')).toBe(true);
+    });
+  });
+
+  describe('getJavaScriptContextSuggestions', () => {
+    it('deve sugerir keywords JavaScript', () => {
+      const suggestions = getJavaScriptContextSuggestions('fun', 0, 3);
+      expect(suggestions.some((suggestion) => suggestion.text === 'function')).toBe(true);
+    });
+  });
+
+  describe('getSQLContextSuggestions', () => {
+    it('deve sugerir keywords SQL', () => {
+      const suggestions = getSQLContextSuggestions('SEL', 0, 3);
+      expect(suggestions.some((suggestion) => suggestion.text === 'SELECT')).toBe(true);
     });
   });
 
   describe('getContextSuggestions', () => {
     it('deve retornar sugestões HTML', () => {
-      const suggestions = getContextSuggestions('html', '<d', 1, 2);
+      const suggestions = getContextSuggestions('html', '<d', 0, 2);
       expect(suggestions.length).toBeGreaterThan(0);
     });
 
     it('deve retornar sugestões CSS', () => {
-      const suggestions = getContextSuggestions('css', 'div { c', 1, 8);
+      const suggestions = getContextSuggestions('css', 'div { c', 0, 8);
       expect(suggestions.length).toBeGreaterThan(0);
     });
 
     it('deve retornar sugestões Python', () => {
-      const suggestions = getContextSuggestions('python', 'd', 1, 1);
+      const suggestions = getContextSuggestions('python', 'd', 0, 1);
       expect(suggestions.length).toBeGreaterThan(0);
+    });
+
+    it('deve retornar sugestões JavaScript e SQL', () => {
+      expect(getContextSuggestions('javascript', 'fun', 0, 3).length).toBeGreaterThan(0);
+      expect(getContextSuggestions('sql', 'SEL', 0, 3).length).toBeGreaterThan(0);
     });
   });
 });

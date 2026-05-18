@@ -188,7 +188,7 @@ export function CodeSuggestions({
             <View>
               <Text style={styles.title}>Sugestões</Text>
               <Text style={styles.subtitle}>
-                {currentLanguage.toUpperCase()} • LINHA {line}
+                {currentLanguage.toUpperCase()} • LINHA {line + 1}
               </Text>
             </View>
             <Pressable style={styles.closeButton} onPress={onClose}>
@@ -218,4 +218,3 @@ export function CodeSuggestions({
     </Modal>
   );
 }
-

@@ -2,11 +2,11 @@
  * Sugestões contextuais inteligentes para múltiplas linguagens
  */
 
-import { CodeLanguage } from './types-extended';
+import type { CodeLanguage } from './types-extended';
 
 export interface Suggestion {
   text: string;
-  type: 'tag' | 'attribute' | 'property' | 'value' | 'keyword' | 'function';
+  type: 'tag' | 'attribute' | 'property' | 'value' | 'keyword' | 'function' | 'class';
   description: string;
   insertText?: string;
 }
@@ -16,7 +16,7 @@ export interface Suggestion {
  */
 export function getHTMLContextSuggestions(code: string, line: number, column: number): Suggestion[] {
   const lines = code.split('\n');
-  const currentLine = lines[line - 1] || '';
+  const currentLine = lines[line] || '';
   const beforeCursor = currentLine.substring(0, column);
   const suggestions: Suggestion[] = [];
 
@@ -99,7 +99,7 @@ export function getHTMLContextSuggestions(code: string, line: number, column: nu
  */
 export function getCSSContextSuggestions(code: string, line: number, column: number): Suggestion[] {
   const lines = code.split('\n');
-  const currentLine = lines[line - 1] || '';
+  const currentLine = lines[line] || '';
   const beforeCursor = currentLine.substring(0, column);
   const suggestions: Suggestion[] = [];
 
@@ -201,7 +201,7 @@ export function getCSSContextSuggestions(code: string, line: number, column: num
  */
 export function getPythonContextSuggestions(code: string, line: number, column: number): Suggestion[] {
   const lines = code.split('\n');
-  const currentLine = lines[line - 1] || '';
+  const currentLine = lines[line] || '';
   const beforeCursor = currentLine.substring(0, column);
 
   const pythonKeywords = [
@@ -250,6 +250,91 @@ export function getPythonContextSuggestions(code: string, line: number, column: 
   return suggestions;
 }
 
+export function getJavaScriptContextSuggestions(
+  code: string,
+  line: number,
+  column: number,
+): Suggestion[] {
+  const lines = code.split('\n');
+  const currentLine = lines[line] || '';
+  const beforeCursor = currentLine.substring(0, column);
+  const partial = beforeCursor.match(/([a-zA-Z_$][\w$]*)$/)?.[1] || '';
+  if (!partial) return [];
+
+  const keywords = [
+    'const',
+    'let',
+    'function',
+    'class',
+    'if',
+    'else',
+    'for',
+    'while',
+    'switch',
+    'return',
+    'import',
+    'export',
+    'async',
+    'await',
+    'interface',
+    'type',
+  ];
+  const functions = ['console.log', 'fetch', 'map', 'filter', 'reduce', 'setTimeout'];
+
+  return [
+    ...keywords
+      .filter((keyword) => keyword.startsWith(partial))
+      .map((keyword) => ({
+        text: keyword,
+        type: keyword === 'class' ? ('class' as const) : ('keyword' as const),
+        description: `Palavra-chave JavaScript/TypeScript: ${keyword}`,
+      })),
+    ...functions
+      .filter((fn) => fn.startsWith(partial))
+      .map((fn) => ({
+        text: fn,
+        type: 'function' as const,
+        description: `Função comum: ${fn}`,
+        insertText: `${fn}()`,
+      })),
+  ];
+}
+
+export function getSQLContextSuggestions(
+  code: string,
+  line: number,
+  column: number,
+): Suggestion[] {
+  const lines = code.split('\n');
+  const currentLine = lines[line] || '';
+  const beforeCursor = currentLine.substring(0, column);
+  const partial = beforeCursor.match(/([a-zA-Z_]+)$/)?.[1]?.toUpperCase() || '';
+  if (!partial) return [];
+
+  const keywords = [
+    'SELECT',
+    'FROM',
+    'WHERE',
+    'JOIN',
+    'LEFT JOIN',
+    'GROUP BY',
+    'ORDER BY',
+    'INSERT INTO',
+    'UPDATE',
+    'DELETE FROM',
+    'CREATE TABLE',
+  ];
+
+  return keywords
+    .filter((keyword) => keyword.startsWith(partial))
+    .map((keyword) => ({
+      text: keyword,
+      type: 'keyword' as const,
+      description: `Palavra-chave SQL: ${keyword}`,
+      insertText: keyword,
+    }));
+}
+
 /**
  * Obtém sugestões contextuais baseadas na linguagem
  */
@@ -266,6 +351,11 @@ export function getContextSuggestions(
       return getCSSContextSuggestions(code, line, column);
     case 'python':
       return getPythonContextSuggestions(code, line, column);
+    case 'javascript':
+    case 'typescript':
+      return getJavaScriptContextSuggestions(code, line, column);
+    case 'sql':
+      return getSQLContextSuggestions(code, line, column);
     default:
       return [];
   }

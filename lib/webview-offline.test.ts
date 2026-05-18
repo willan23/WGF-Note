@@ -16,6 +16,7 @@ import {
   clearFailedItems,
   retryFailedItems,
   _resetForTesting,
+  _setOnlineForTesting,
 } from './offline-sync-queue';
 
 describe('WebView Renderer', () => {
@@ -94,8 +95,8 @@ describe('WebView Renderer', () => {
       const html = '<html><body><p>Test</p></body></html>';
       const result = validateHTML(html);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('DOCTYPE'))).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(e => e.includes('DOCTYPE'))).toBe(true);
     });
 
     it('deve detectar tags não fechadas', () => {
@@ -222,10 +223,8 @@ describe('Offline Sync Queue', () => {
     });
 
     it('deve retornar 0 se não estiver online', async () => {
+      _setOnlineForTesting(false);
       await addToSyncQueue('save', 'file1', 'test.py', 'print("hello")', 'python');
-
-      const state = getOfflineState();
-      state.isOnline = false;
 
       const result = await syncPendingChanges();
 

@@ -1,65 +1,71 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PythonFile, EditorState, AppSettings, UndoRedoStack } from './types';
-import { CodeLanguage, detectLanguageFromExtension } from './types-extended';
+import type { AppSettings, PythonFile } from './types';
+import type { CodeLanguage } from './types-extended';
 import * as UndoRedoManager from './undo-redo-manager';
 import * as ClipboardManager from './clipboard-manager';
 import * as FileSystemManager from './file-system-manager';
 import * as BookmarksManager from './bookmarks-manager';
 import * as RecentFilesManager from './recent-files-manager';
 import * as AutoIndent from './auto-indent';
+import {
+  createDraftFile,
+  createPersistedFile,
+  editorReducer,
+  getLineAndColumnFromOffset,
+  getOffsetFromLineAndColumn,
+  initialEditorState,
+  replaceSelection,
+} from './editor-state';
+import {
+  createEditorSessionSnapshot,
+  EDITOR_SESSION_STORAGE_KEY,
+  isEditorSessionSnapshot,
+  restoreEditorSession,
+} from './editor-session';
+import { useThemeContext } from './theme-provider';
+import type { WorkspaceReplacementPlanItem } from './workspace-search';
 
 interface EditorContextType {
-  state: EditorState;
+  state: typeof initialEditorState;
   settings: AppSettings;
   undoRedoState: UndoRedoManager.UndoRedoState;
   currentLanguage: CodeLanguage;
   setCurrentLanguage: (language: CodeLanguage) => void;
-  // File operations
   openFile: (file: PythonFile) => void;
   closeFile: (fileId: string) => void;
   updateFileContent: (fileId: string, content: string) => void;
   createNewFile: (name: string, language?: CodeLanguage) => PythonFile;
   saveCurrentFile: () => Promise<void>;
   openFileFromSystem: (filePath: string) => Promise<void>;
-  // Cursor and selection
+  openFileFromSystemAtRange: (filePath: string, start: number, end: number) => Promise<void>;
+  applyWorkspaceReplacementPlan: (
+    plan: WorkspaceReplacementPlanItem[],
+  ) => Promise<{ updatedOpenFiles: number; updatedClosedFiles: number }>;
+  renameWorkspacePath: (oldPath: string, newPath: string, isDirectory: boolean) => Promise<void>;
+  removeWorkspacePath: (path: string, isDirectory: boolean) => Promise<void>;
   setCursorPosition: (line: number, column: number) => void;
   setSelection: (start: number, end: number) => void;
-  // Settings
+  selectRange: (start: number, end: number) => void;
+  replaceCurrentSelection: (replacement: string) => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
-  // Undo/Redo
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  // Clipboard
   copy: () => Promise<void>;
   cut: () => Promise<void>;
   paste: () => Promise<void>;
-  // Bookmarks
   toggleBookmark: (line: number) => Promise<void>;
   nextBookmark: () => Promise<void>;
   previousBookmark: () => Promise<void>;
-  // Auto-indent
   autoIndentCurrentLine: () => void;
   indentSelection: () => void;
   dedentSelection: () => void;
-  // Recent files
   getRecentFiles: () => Promise<RecentFilesManager.RecentFile[]>;
 }
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
-
-type EditorAction =
-  | { type: 'OPEN_FILE'; payload: PythonFile }
-  | { type: 'CLOSE_FILE'; payload: string }
-  | { type: 'UPDATE_CONTENT'; payload: { fileId: string; content: string } }
-  | { type: 'SET_CURSOR'; payload: { line: number; column: number } }
-  | { type: 'SET_SELECTION'; payload: { start: number; end: number } }
-  | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
-  | { type: 'UNDO' }
-  | { type: 'REDO' }
-  | { type: 'LOAD_SETTINGS'; payload: AppSettings };
 
 const defaultSettings: AppSettings = {
   theme: 'dark',
@@ -72,102 +78,61 @@ const defaultSettings: AppSettings = {
   autoSaveInterval: 30000,
   showLineNumbers: true,
   showWhitespace: false,
+  localAiEnabled: false,
+  localAiBaseUrl: '',
+  localAiModel: '',
 };
 
-const initialEditorState: EditorState = {
-  currentFile: null,
-  openFiles: [],
-  cursorLine: 0,
-  cursorColumn: 0,
-  selectionStart: 0,
-  selectionEnd: 0,
-};
-
-const initialUndoRedo: UndoRedoStack = {
-  undo: [],
-  redo: [],
-};
-
-function editorReducer(state: EditorState, action: EditorAction): EditorState {
-  switch (action.type) {
-    case 'OPEN_FILE': {
-      const fileExists = state.openFiles.find(f => f.id === action.payload.id);
-      return {
-        ...state,
-        currentFile: action.payload,
-        openFiles: fileExists ? state.openFiles : [...state.openFiles, action.payload],
-        cursorLine: 0,
-        cursorColumn: 0,
-      };
-    }
-    case 'CLOSE_FILE': {
-      const remaining = state.openFiles.filter(f => f.id !== action.payload);
-      return {
-        ...state,
-        currentFile: remaining.length > 0 ? remaining[0] : null,
-        openFiles: remaining,
-      };
-    }
-    case 'UPDATE_CONTENT': {
-      return {
-        ...state,
-        currentFile: state.currentFile?.id === action.payload.fileId
-          ? { ...state.currentFile, content: action.payload.content, isModified: true }
-          : state.currentFile,
-        openFiles: state.openFiles.map(f =>
-          f.id === action.payload.fileId
-            ? { ...f, content: action.payload.content, isModified: true }
-            : f
-        ),
-      };
-    }
-    case 'SET_CURSOR':
-      return {
-        ...state,
-        cursorLine: action.payload.line,
-        cursorColumn: action.payload.column,
-      };
-    case 'SET_SELECTION':
-      return {
-        ...state,
-        selectionStart: action.payload.start,
-        selectionEnd: action.payload.end,
-      };
-    default:
-      return state;
+function getHistoryForFile(
+  histories: Record<string, UndoRedoManager.UndoRedoState>,
+  file: PythonFile | null,
+): UndoRedoManager.UndoRedoState {
+  if (!file) {
+    return UndoRedoManager.createUndoRedoState();
   }
+
+  return histories[file.id] ?? UndoRedoManager.createUndoRedoState(file.content);
 }
 
 export function EditorProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(editorReducer, initialEditorState);
   const [settings, setSettingsState] = useState<AppSettings>(defaultSettings);
-  const [undoRedoState, setUndoRedoState] = useState<UndoRedoManager.UndoRedoState>(
-    UndoRedoManager.createUndoRedoState()
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+  const [historyByFileId, setHistoryByFileId] = useState<
+    Record<string, UndoRedoManager.UndoRedoState>
+  >({});
+  const { setColorScheme } = useThemeContext();
+
+  const currentLanguage = state.currentFile?.language ?? 'python';
+  const undoRedoState = useMemo(
+    () => getHistoryForFile(historyByFileId, state.currentFile),
+    [historyByFileId, state.currentFile],
   );
-  const [currentLanguage, setCurrentLanguage] = useState<CodeLanguage>('python');
 
-  // Inicializar sistema de ficheiros
-  useEffect(() => {
-    FileSystemManager.initFileSystem().catch(console.error);
-  }, []);
-
-  // Carregar definições do AsyncStorage ao iniciar
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const stored = await AsyncStorage.getItem('editor-settings');
-        if (stored) {
-          setSettingsState(JSON.parse(stored));
-        }
+        if (!stored) return;
+
+        const parsed = JSON.parse(stored) as Partial<AppSettings>;
+        const nextSettings = { ...defaultSettings, ...parsed };
+        setSettingsState(nextSettings);
+        setColorScheme(nextSettings.theme);
       } catch (error) {
         console.error('Erro ao carregar definições:', error);
+      } finally {
+        setSettingsHydrated(true);
       }
     };
-    loadSettings();
-  }, []);
 
-  // Guardar definições quando mudam
+    loadSettings();
+  }, [setColorScheme]);
+
   useEffect(() => {
+    if (!settingsHydrated) return;
+
     const saveSettings = async () => {
       try {
         await AsyncStorage.setItem('editor-settings', JSON.stringify(settings));
@@ -175,70 +140,160 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
         console.error('Erro ao guardar definições:', error);
       }
     };
-    saveSettings();
-  }, [settings]);
 
-  // File operations
-  const openFile = useCallback((file: PythonFile) => {
-    dispatch({ type: 'OPEN_FILE', payload: file });
-    // Adicionar aos ficheiros recentes
-    RecentFilesManager.addRecentFile(
-      file.id,
-      file.name,
-      file.path,
-      detectLanguageFromExtension(file.name)
-    ).catch(console.error);
+    saveSettings();
+  }, [settings, settingsHydrated]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      try {
+        const [, storedSession] = await Promise.all([
+          FileSystemManager.initFileSystem(),
+          AsyncStorage.getItem(EDITOR_SESSION_STORAGE_KEY),
+        ]);
+
+        if (!storedSession) return;
+
+        const parsedSession: unknown = JSON.parse(storedSession);
+        if (!isEditorSessionSnapshot(parsedSession)) return;
+
+        const restoredSession = await restoreEditorSession(parsedSession, {
+          fileExists: FileSystemManager.fileExists,
+          openFile: FileSystemManager.openFile,
+        });
+
+        if (cancelled) return;
+
+        dispatch({
+          type: 'RESTORE_SESSION',
+          payload: {
+            files: restoredSession.files,
+            currentFileId: restoredSession.activeFileId,
+            viewStateByFileId: restoredSession.viewStateByFileId,
+          },
+        });
+        setHistoryByFileId(
+          Object.fromEntries(
+            restoredSession.files.map((file) => [
+              file.id,
+              UndoRedoManager.createUndoRedoState(file.content),
+            ]),
+          ),
+        );
+      } catch (error) {
+        console.error('Erro ao restaurar sessão:', error);
+      } finally {
+        if (!cancelled) {
+          setSessionHydrated(true);
+        }
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!sessionHydrated) return;
+
+    const timeoutId = setTimeout(() => {
+      AsyncStorage.setItem(
+        EDITOR_SESSION_STORAGE_KEY,
+        JSON.stringify(createEditorSessionSnapshot(state)),
+      ).catch((error) => {
+        console.error('Erro ao guardar sessão:', error);
+      });
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [sessionHydrated, state]);
+
+  const registerOpenedFile = useCallback((file: PythonFile) => {
+    setHistoryByFileId((histories) =>
+      histories[file.id]
+        ? histories
+        : {
+            ...histories,
+            [file.id]: UndoRedoManager.createUndoRedoState(file.content),
+          },
+    );
+
+    if (file.path) {
+      RecentFilesManager.addRecentFile(
+        file.id,
+        file.name,
+        file.path,
+        file.language,
+        file.charCount,
+      ).catch(console.error);
+    }
+  }, []);
+
+  const openFile = useCallback(
+    (file: PythonFile) => {
+      dispatch({ type: 'OPEN_FILE', payload: file });
+      registerOpenedFile(file);
+    },
+    [registerOpenedFile],
+  );
 
   const closeFile = useCallback((fileId: string) => {
     dispatch({ type: 'CLOSE_FILE', payload: fileId });
   }, []);
 
-  const updateFileContent = useCallback((fileId: string, content: string) => {
-    if (!state.currentFile) return;
+  const updateFileContent = useCallback(
+    (fileId: string, content: string) => {
+      const targetFile = state.openFiles.find((file) => file.id === fileId);
+      if (!targetFile || targetFile.content === content) return;
 
-    // Adicionar ao histórico de undo/redo
-    const newState = UndoRedoManager.pushAction(undoRedoState, {
-      type: 'replace',
-      content,
-      previousContent: state.currentFile.content,
-    });
-    setUndoRedoState(newState);
+      setHistoryByFileId((histories) => {
+        const previousHistory =
+          histories[fileId] ?? UndoRedoManager.createUndoRedoState(targetFile.content);
 
-    dispatch({ type: 'UPDATE_CONTENT', payload: { fileId, content } });
-  }, [state.currentFile, undoRedoState]);
+        return {
+          ...histories,
+          [fileId]: UndoRedoManager.pushAction(previousHistory, {
+            type: 'replace',
+            content,
+            previousContent: targetFile.content,
+          }),
+        };
+      });
 
-  const createNewFile = useCallback((name: string, language?: CodeLanguage): PythonFile => {
-    const id = `file-${Date.now()}`;
-    const detectedLanguage = language || detectLanguageFromExtension(name);
-    return {
-      id,
-      name,
-      path: `/${name}`,
-      content: '',
-      lastModified: Date.now(),
-      isModified: false,
-      encoding: 'utf-8',
-      lineCount: 1,
-      charCount: 0,
-    };
-  }, []);
+      dispatch({ type: 'UPDATE_CONTENT', payload: { fileId, content } });
+    },
+    [state.openFiles],
+  );
+
+  const createNewFile = useCallback(
+    (name: string, language?: CodeLanguage): PythonFile =>
+      createDraftFile(name, language),
+    [],
+  );
 
   const saveCurrentFile = useCallback(async () => {
     if (!state.currentFile) return;
 
     try {
-      await FileSystemManager.saveFile(
+      const uri = await FileSystemManager.saveFile(
         state.currentFile.name,
-        state.currentFile.content
+        state.currentFile.content,
+        {
+          fileUri: state.currentFile.uri ?? undefined,
+        },
       );
 
-      // Atualizar estado para não modificado
       dispatch({
-        type: 'UPDATE_CONTENT',
+        type: 'MARK_SAVED',
         payload: {
           fileId: state.currentFile.id,
-          content: state.currentFile.content,
+          uri,
+          lastModified: Date.now(),
         },
       });
     } catch (error) {
@@ -247,29 +302,118 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.currentFile]);
 
-  const openFileFromSystem = useCallback(async (filePath: string) => {
-    try {
-      const content = await FileSystemManager.openFile(filePath);
-      const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
-      const file: PythonFile = {
-        id: `file-${Date.now()}`,
-        name: fileName,
-        path: filePath,
-        content,
-        lastModified: Date.now(),
-        isModified: false,
-        encoding: 'utf-8',
-        lineCount: content.split('\n').length,
-        charCount: content.length,
-      };
-      openFile(file);
-    } catch (error) {
-      console.error('Erro ao abrir ficheiro:', error);
-      throw error;
-    }
-  }, [openFile]);
+  useEffect(() => {
+    if (!settings.autoSave || !state.currentFile?.isModified) return;
 
-  // Cursor and selection
+    const timeoutId = setTimeout(() => {
+      saveCurrentFile().catch(console.error);
+    }, settings.autoSaveInterval);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    saveCurrentFile,
+    settings.autoSave,
+    settings.autoSaveInterval,
+    state.currentFile?.id,
+    state.currentFile?.isModified,
+    state.currentFile?.content,
+  ]);
+
+  const openFileFromSystem = useCallback(
+    async (filePath: string) => {
+      try {
+        const existingFile = state.openFiles.find((file) => file.path === filePath);
+        if (existingFile) {
+          openFile(existingFile);
+          return;
+        }
+
+        const content = await FileSystemManager.openFile(filePath);
+        openFile(createPersistedFile(filePath, content));
+      } catch (error) {
+        console.error('Erro ao abrir ficheiro:', error);
+        throw error;
+      }
+    },
+    [openFile, state.openFiles],
+  );
+
+  const openFileFromSystemAtRange = useCallback(
+    async (filePath: string, start: number, end: number) => {
+      try {
+        const existingFile = state.openFiles.find((file) => file.path === filePath);
+        const file = existingFile ?? createPersistedFile(
+          filePath,
+          await FileSystemManager.openFile(filePath),
+        );
+        const { line, column } = getLineAndColumnFromOffset(file.content, start);
+
+        dispatch({ type: 'OPEN_FILE', payload: file });
+        registerOpenedFile(file);
+        dispatch({ type: 'SET_SELECTION', payload: { start, end } });
+        dispatch({ type: 'SET_CURSOR', payload: { line, column } });
+      } catch (error) {
+        console.error('Erro ao abrir ficheiro na correspondência:', error);
+        throw error;
+      }
+    },
+    [registerOpenedFile, state.openFiles],
+  );
+
+  const applyWorkspaceReplacementPlan = useCallback(
+    async (plan: WorkspaceReplacementPlanItem[]) => {
+      const openFilesByPath = new Map(
+        state.openFiles.flatMap((file) => (file.path ? [[file.path, file] as const] : [])),
+      );
+
+      let updatedOpenFiles = 0;
+      const closedFileWrites: Promise<string>[] = [];
+
+      plan.forEach((item) => {
+        const openFileEntry = openFilesByPath.get(item.path);
+        if (openFileEntry) {
+          updateFileContent(openFileEntry.id, item.nextContent);
+          updatedOpenFiles += 1;
+          return;
+        }
+
+        closedFileWrites.push(
+          FileSystemManager.writeFileContent(item.path, item.nextContent),
+        );
+      });
+
+      await Promise.all(closedFileWrites);
+
+      return {
+        updatedOpenFiles,
+        updatedClosedFiles: closedFileWrites.length,
+      };
+    },
+    [state.openFiles, updateFileContent],
+  );
+
+  const renameWorkspacePath = useCallback(
+    async (oldPath: string, newPath: string, isDirectory: boolean) => {
+      dispatch({
+        type: 'RENAME_PATH',
+        payload: { oldPath, newPath, isDirectory },
+      });
+      await RecentFilesManager.renameRecentPaths(oldPath, newPath, isDirectory);
+    },
+    [],
+  );
+
+  const removeWorkspacePath = useCallback(
+    async (path: string, isDirectory: boolean) => {
+      dispatch({
+        type: 'REMOVE_PATH',
+        payload: { path, isDirectory },
+      });
+      await RecentFilesManager.removeRecentFilesByPath(path, isDirectory);
+    },
+    [],
+  );
+
   const setCursorPosition = useCallback((line: number, column: number) => {
     dispatch({ type: 'SET_CURSOR', payload: { line, column } });
   }, []);
@@ -278,239 +422,319 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'SET_SELECTION', payload: { start, end } });
   }, []);
 
-  // Settings
-  const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
-    setSettingsState(prev => ({ ...prev, ...newSettings }));
-  }, []);
+  const selectRange = useCallback(
+    (start: number, end: number) => {
+      dispatch({ type: 'SET_SELECTION', payload: { start, end } });
 
-  // Undo/Redo
+      const { line, column } = getLineAndColumnFromOffset(
+        state.currentFile?.content ?? '',
+        start,
+      );
+      dispatch({ type: 'SET_CURSOR', payload: { line, column } });
+    },
+    [state.currentFile?.content],
+  );
+
+  const replaceCurrentSelection = useCallback(
+    (replacement: string) => {
+      if (!state.currentFile) return;
+
+      const { content, caret } = replaceSelection(
+        state.currentFile.content,
+        state.selectionStart,
+        state.selectionEnd,
+        replacement,
+      );
+
+      updateFileContent(state.currentFile.id, content);
+      setSelection(caret, caret);
+    },
+    [
+      setSelection,
+      state.currentFile,
+      state.selectionEnd,
+      state.selectionStart,
+      updateFileContent,
+    ],
+  );
+
+  const updateSettings = useCallback(
+    (newSettings: Partial<AppSettings>) => {
+      setSettingsState((previousSettings) => ({ ...previousSettings, ...newSettings }));
+
+      if (newSettings.theme) {
+        setColorScheme(newSettings.theme);
+      }
+    },
+    [setColorScheme],
+  );
+
+  const setCurrentLanguage = useCallback(
+    (language: CodeLanguage) => {
+      if (!state.currentFile) return;
+      dispatch({ type: 'SET_LANGUAGE', payload: { fileId: state.currentFile.id, language } });
+    },
+    [state.currentFile],
+  );
+
   const undo = useCallback(() => {
+    if (!state.currentFile) return;
+
     const result = UndoRedoManager.undo(undoRedoState);
-    if (result.content !== null && state.currentFile) {
-      setUndoRedoState(result.state);
-      dispatch({
-        type: 'UPDATE_CONTENT',
-        payload: { fileId: state.currentFile.id, content: result.content },
-      });
-    }
-  }, [undoRedoState, state.currentFile]);
+    if (result.content === null) return;
+
+    setHistoryByFileId((histories) => ({
+      ...histories,
+      [state.currentFile!.id]: result.state,
+    }));
+    dispatch({
+      type: 'UPDATE_CONTENT',
+      payload: { fileId: state.currentFile.id, content: result.content },
+    });
+  }, [state.currentFile, undoRedoState]);
 
   const redo = useCallback(() => {
-    const result = UndoRedoManager.redo(undoRedoState);
-    if (result.content !== null && state.currentFile) {
-      setUndoRedoState(result.state);
-      dispatch({
-        type: 'UPDATE_CONTENT',
-        payload: { fileId: state.currentFile.id, content: result.content },
-      });
-    }
-  }, [undoRedoState, state.currentFile]);
+    if (!state.currentFile) return;
 
-  // Clipboard
+    const result = UndoRedoManager.redo(undoRedoState);
+    if (result.content === null) return;
+
+    setHistoryByFileId((histories) => ({
+      ...histories,
+      [state.currentFile!.id]: result.state,
+    }));
+    dispatch({
+      type: 'UPDATE_CONTENT',
+      payload: { fileId: state.currentFile.id, content: result.content },
+    });
+  }, [state.currentFile, undoRedoState]);
+
   const copy = useCallback(async () => {
     if (!state.currentFile) return;
 
-    const { selectionStart, selectionEnd } = state;
-    const selectedText = state.currentFile.content.substring(selectionStart, selectionEnd);
+    const selectedText = state.currentFile.content.substring(
+      state.selectionStart,
+      state.selectionEnd,
+    );
 
     if (selectedText) {
       await ClipboardManager.copyToClipboard(selectedText, currentLanguage);
     }
-  }, [state, currentLanguage]);
+  }, [currentLanguage, state.currentFile, state.selectionEnd, state.selectionStart]);
 
   const cut = useCallback(async () => {
     if (!state.currentFile) return;
 
-    const { selectionStart, selectionEnd } = state;
-    const selectedText = state.currentFile.content.substring(selectionStart, selectionEnd);
+    const selectedText = state.currentFile.content.substring(
+      state.selectionStart,
+      state.selectionEnd,
+    );
 
-    if (selectedText) {
-      await ClipboardManager.cutToClipboard(selectedText, currentLanguage);
+    if (!selectedText) return;
 
-      // Remover texto selecionado
-      const newContent =
-        state.currentFile.content.substring(0, selectionStart) +
-        state.currentFile.content.substring(selectionEnd);
-
-      updateFileContent(state.currentFile.id, newContent);
-    }
-  }, [state, currentLanguage, updateFileContent]);
+    await ClipboardManager.cutToClipboard(selectedText, currentLanguage);
+    replaceCurrentSelection('');
+  }, [
+    currentLanguage,
+    replaceCurrentSelection,
+    state.currentFile,
+    state.selectionEnd,
+    state.selectionStart,
+  ]);
 
   const paste = useCallback(async () => {
-    if (!state.currentFile) return;
-
     const clipboardText = await ClipboardManager.pasteFromClipboard();
-
     if (clipboardText) {
-      const { selectionStart, selectionEnd } = state;
-      const newContent =
-        state.currentFile.content.substring(0, selectionStart) +
-        clipboardText +
-        state.currentFile.content.substring(selectionEnd);
-
-      updateFileContent(state.currentFile.id, newContent);
+      replaceCurrentSelection(clipboardText);
     }
-  }, [state, updateFileContent]);
+  }, [replaceCurrentSelection]);
 
-  // Bookmarks
-  const toggleBookmark = useCallback(async (line: number) => {
-    if (!state.currentFile) return;
+  const toggleBookmark = useCallback(
+    async (line: number) => {
+      if (!state.currentFile) return;
 
-    const lines = state.currentFile.content.split('\n');
-    const snippet = lines[line] || '';
-
-    await BookmarksManager.toggleBookmark(
-      state.currentFile.id,
-      state.currentFile.name,
-      line,
-      snippet
-    );
-  }, [state.currentFile]);
+      const snippet = state.currentFile.content.split('\n')[line] || '';
+      await BookmarksManager.toggleBookmark(
+        state.currentFile.id,
+        state.currentFile.name,
+        line,
+        snippet,
+      );
+    },
+    [state.currentFile],
+  );
 
   const nextBookmark = useCallback(async () => {
     if (!state.currentFile) return;
 
     const bookmark = await BookmarksManager.getNextBookmark(
       state.currentFile.id,
-      state.cursorLine
+      state.cursorLine,
     );
 
     if (bookmark) {
-      setCursorPosition(bookmark.line, 0);
+      const offset = getOffsetFromLineAndColumn(state.currentFile.content, bookmark.line, 0);
+      selectRange(offset, offset);
     }
-  }, [state.currentFile, state.cursorLine, setCursorPosition]);
+  }, [selectRange, state.currentFile, state.cursorLine]);
 
   const previousBookmark = useCallback(async () => {
     if (!state.currentFile) return;
 
     const bookmark = await BookmarksManager.getPreviousBookmark(
       state.currentFile.id,
-      state.cursorLine
+      state.cursorLine,
     );
 
     if (bookmark) {
-      setCursorPosition(bookmark.line, 0);
+      const offset = getOffsetFromLineAndColumn(state.currentFile.content, bookmark.line, 0);
+      selectRange(offset, offset);
     }
-  }, [state.currentFile, state.cursorLine, setCursorPosition]);
+  }, [selectRange, state.currentFile, state.cursorLine]);
 
-  // Auto-indent
   const autoIndentCurrentLine = useCallback(() => {
     if (!state.currentFile) return;
 
     const lines = state.currentFile.content.split('\n');
     const currentLine = lines[state.cursorLine] || '';
     const previousLine = state.cursorLine > 0 ? lines[state.cursorLine - 1] : '';
-
     const indentConfig: AutoIndent.IndentConfig = {
       useTabs: !settings.useSpaces,
       tabSize: settings.indentSize,
       autoIndent: true,
     };
 
-    const indentedLine = AutoIndent.autoIndentLine(
+    lines[state.cursorLine] = AutoIndent.autoIndentLine(
       currentLine,
       previousLine,
       currentLanguage,
-      indentConfig
+      indentConfig,
     );
-
-    lines[state.cursorLine] = indentedLine;
     updateFileContent(state.currentFile.id, lines.join('\n'));
-  }, [state, settings, currentLanguage, updateFileContent]);
+  }, [currentLanguage, settings.indentSize, settings.useSpaces, state, updateFileContent]);
 
   const indentSelection = useCallback(() => {
     if (!state.currentFile) return;
 
-    const { selectionStart, selectionEnd } = state;
-    const selectedText = state.currentFile.content.substring(selectionStart, selectionEnd);
-
+    const selectedText = state.currentFile.content.substring(
+      state.selectionStart,
+      state.selectionEnd,
+    );
     const indentConfig: AutoIndent.IndentConfig = {
       useTabs: !settings.useSpaces,
       tabSize: settings.indentSize,
       autoIndent: true,
     };
 
-    const indented = AutoIndent.increaseIndent(selectedText, 1, indentConfig);
-
-    const newContent =
-      state.currentFile.content.substring(0, selectionStart) +
-      indented +
-      state.currentFile.content.substring(selectionEnd);
-
-    updateFileContent(state.currentFile.id, newContent);
-  }, [state, settings, updateFileContent]);
+    replaceCurrentSelection(AutoIndent.increaseIndent(selectedText, 1, indentConfig));
+  }, [
+    replaceCurrentSelection,
+    settings.indentSize,
+    settings.useSpaces,
+    state.currentFile,
+    state.selectionEnd,
+    state.selectionStart,
+  ]);
 
   const dedentSelection = useCallback(() => {
     if (!state.currentFile) return;
 
-    const { selectionStart, selectionEnd } = state;
-    const selectedText = state.currentFile.content.substring(selectionStart, selectionEnd);
-
+    const selectedText = state.currentFile.content.substring(
+      state.selectionStart,
+      state.selectionEnd,
+    );
     const indentConfig: AutoIndent.IndentConfig = {
       useTabs: !settings.useSpaces,
       tabSize: settings.indentSize,
       autoIndent: true,
     };
 
-    const dedented = AutoIndent.decreaseIndent(selectedText, 1, indentConfig);
+    replaceCurrentSelection(AutoIndent.decreaseIndent(selectedText, 1, indentConfig));
+  }, [
+    replaceCurrentSelection,
+    settings.indentSize,
+    settings.useSpaces,
+    state.currentFile,
+    state.selectionEnd,
+    state.selectionStart,
+  ]);
 
-    const newContent =
-      state.currentFile.content.substring(0, selectionStart) +
-      dedented +
-      state.currentFile.content.substring(selectionEnd);
+  const getRecentFiles = useCallback(async () => RecentFilesManager.getRecentFiles(), []);
 
-    updateFileContent(state.currentFile.id, newContent);
-  }, [state, settings, updateFileContent]);
-
-  // Recent files
-  const getRecentFiles = useCallback(async () => {
-    return await RecentFilesManager.getRecentFiles();
-  }, []);
-
-  const value: EditorContextType = {
-    state,
-    settings,
-    undoRedoState,
-    currentLanguage,
-    setCurrentLanguage,
-    // File operations
-    openFile,
-    closeFile,
-    updateFileContent,
-    createNewFile,
-    saveCurrentFile,
-    openFileFromSystem,
-    // Cursor and selection
-    setCursorPosition,
-    setSelection,
-    // Settings
-    updateSettings,
-    // Undo/Redo
-    undo,
-    redo,
-    canUndo: UndoRedoManager.canUndo(undoRedoState),
-    canRedo: UndoRedoManager.canRedo(undoRedoState),
-    // Clipboard
-    copy,
-    cut,
-    paste,
-    // Bookmarks
-    toggleBookmark,
-    nextBookmark,
-    previousBookmark,
-    // Auto-indent
-    autoIndentCurrentLine,
-    indentSelection,
-    dedentSelection,
-    // Recent files
-    getRecentFiles,
-  };
-
-  return (
-    <EditorContext.Provider value={value}>
-      {children}
-    </EditorContext.Provider>
+  const value = useMemo<EditorContextType>(
+    () => ({
+      state,
+      settings,
+      undoRedoState,
+      currentLanguage,
+      setCurrentLanguage,
+      openFile,
+      closeFile,
+      updateFileContent,
+      createNewFile,
+      saveCurrentFile,
+      openFileFromSystem,
+      openFileFromSystemAtRange,
+      applyWorkspaceReplacementPlan,
+      renameWorkspacePath,
+      removeWorkspacePath,
+      setCursorPosition,
+      setSelection,
+      selectRange,
+      replaceCurrentSelection,
+      updateSettings,
+      undo,
+      redo,
+      canUndo: UndoRedoManager.canUndo(undoRedoState),
+      canRedo: UndoRedoManager.canRedo(undoRedoState),
+      copy,
+      cut,
+      paste,
+      toggleBookmark,
+      nextBookmark,
+      previousBookmark,
+      autoIndentCurrentLine,
+      indentSelection,
+      dedentSelection,
+      getRecentFiles,
+    }),
+    [
+      autoIndentCurrentLine,
+      closeFile,
+      copy,
+      createNewFile,
+      currentLanguage,
+      dedentSelection,
+      getRecentFiles,
+      indentSelection,
+      nextBookmark,
+      openFile,
+      openFileFromSystem,
+      openFileFromSystemAtRange,
+      applyWorkspaceReplacementPlan,
+      paste,
+      previousBookmark,
+      removeWorkspacePath,
+      renameWorkspacePath,
+      redo,
+      replaceCurrentSelection,
+      saveCurrentFile,
+      selectRange,
+      settings,
+      setCurrentLanguage,
+      setCursorPosition,
+      setSelection,
+      state,
+      toggleBookmark,
+      undo,
+      undoRedoState,
+      updateFileContent,
+      updateSettings,
+      cut,
+    ],
   );
+
+  return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
 }
 
 export function useEditor() {

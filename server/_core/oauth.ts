@@ -2,6 +2,12 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import type { Express, Request, Response } from "express";
 import { getUserByOpenId, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
+import {
+  buildLocalDevOpenId,
+  isLocalDevAuthEnabled,
+  normalizeLocalDevLoginInput,
+} from "./local-dev-auth";
+import { ENV } from "./env";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -29,15 +35,11 @@ async function syncUser(userInfo: {
     lastSignedIn,
   });
   const saved = await getUserByOpenId(userInfo.openId);
-  return (
-    saved ?? {
-      openId: userInfo.openId,
-      name: userInfo.name,
-      email: userInfo.email,
-      loginMethod: userInfo.loginMethod ?? null,
-      lastSignedIn,
-    }
-  );
+  if (!saved) {
+    throw new Error("User could not be persisted");
+  }
+
+  return saved;
 }
 
 function buildUserResponse(
@@ -62,6 +64,44 @@ function buildUserResponse(
 }
 
 export function registerOAuthRoutes(app: Express) {
+  app.post("/api/auth/dev-login", async (req: Request, res: Response) => {
+    if (!isLocalDevAuthEnabled(ENV)) {
+      res.status(404).json({ error: "Local development login is unavailable" });
+      return;
+    }
+
+    const input = normalizeLocalDevLoginInput(req.body);
+    if (!input) {
+      res.status(400).json({ error: "Valid email is required" });
+      return;
+    }
+
+    try {
+      const openId = buildLocalDevOpenId(input.email);
+      const user = await syncUser({
+        openId,
+        name: input.name,
+        email: input.email,
+        loginMethod: "local-dev",
+        platform: "local-dev",
+      });
+      const sessionToken = await sdk.createSessionToken(openId, {
+        name: input.name,
+        expiresInMs: ONE_YEAR_MS,
+      });
+
+      const cookieOptions = getSessionCookieOptions(req);
+      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      res.json({
+        app_session_id: sessionToken,
+        user: buildUserResponse(user),
+      });
+    } catch (error) {
+      console.error("[Auth] Local dev login failed:", error);
+      res.status(500).json({ error: "Local development login failed" });
+    }
+  });
+
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");

@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Platform, View, Text } from "react-native";
+import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 
 export default function TabLayout() {
@@ -64,6 +64,13 @@ export default function TabLayout() {
         options={{
           title: "Terminal",
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="chevron.right" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="cloud"
+        options={{
+          title: "Cloud",
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="paperplane.fill" color={color} />,
         }}
       />
       <Tabs.Screen

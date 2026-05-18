@@ -1,5 +1,7 @@
 # 🚀 Guia Completo de Deploy - Note Py++
 
+> Para a release atual, use também `RELEASE_CHECKLIST.md`; este guia cobre o caminho amplo de publicação.
+
 ## 📋 Índice
 1. [Pré-requisitos](#pré-requisitos)
 2. [Configuração Inicial](#configuração-inicial)
@@ -17,7 +19,7 @@
 
 #### **Para Todos os Deploys**
 - ✅ Node.js 18+ ([Download](https://nodejs.org/))
-- ✅ npm ou pnpm
+- ✅ pnpm
 - ✅ Expo CLI (`npm install -g expo-cli`)
 - ✅ EAS CLI (`npm install -g eas-cli`)
 - ✅ Conta Expo ([Criar conta](https://expo.dev/signup))
@@ -47,10 +49,10 @@
 cd "w:\Projetos\python-notepad-plus-plus-mobile (1)"
 
 # Instalar dependências (se ainda não instalou)
-npm install
+pnpm install
 
 # Verificar se tudo está funcionando
-npm run check
+pnpm verify
 ```
 
 ### **2. Configurar Expo Account**
@@ -99,10 +101,10 @@ export default {
 
 ```bash
 # Build para web
-npx expo export:web
+npx expo export --platform web
 
 # Ou com otimizações
-npx expo export:web --clear
+npx expo export --platform web --clear
 ```
 
 Isso criará uma pasta `dist/` com os arquivos estáticos.
@@ -156,7 +158,7 @@ firebase deploy --only hosting
 
 ```bash
 # Build e deploy automático
-npx expo export:web
+npx expo export --platform web
 # Depois hospedar em qualquer serviço
 ```
 
@@ -425,7 +427,7 @@ eas credentials
 
 ```bash
 # Analisar bundle
-npx expo export:web --clear
+npx expo export --platform web --clear
 
 # Otimizar imagens
 # Remover dependências não utilizadas
@@ -475,7 +477,7 @@ npm install @react-native-firebase/perf
 
 ```bash
 # Web
-npx expo export:web
+npx expo export --platform web
 
 # Android (APK para teste)
 eas build --platform android --profile preview

@@ -174,8 +174,9 @@ export async function getPreviousBookmark(
     currentLine: number
 ): Promise<Bookmark | null> {
     const bookmarks = await getFileBookmarks(fileId);
-    const previous = bookmarks.reverse().find(b => b.line < currentLine);
-    return previous || bookmarks[bookmarks.length - 1] || null;
+    const descending = [...bookmarks].reverse();
+    const previous = descending.find(b => b.line < currentLine);
+    return previous || descending[0] || null;
 }
 
 /**

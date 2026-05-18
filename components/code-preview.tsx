@@ -1,14 +1,13 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Pressable,
-  ActivityIndicator,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { CodeLanguage } from '@/lib/types-extended';
+import type { CodeLanguage } from '@/lib/types-extended';
 
 interface CodePreviewProps {
   code: string;
@@ -136,23 +135,6 @@ export function CodePreview({
     },
   });
 
-  const previewContent = useMemo(() => {
-    if (!code.trim()) {
-      return null;
-    }
-
-    switch (language) {
-      case 'html':
-        return renderHTMLPreview(code);
-      case 'css':
-        return renderCSSPreview(code);
-      case 'python':
-        return renderPythonPreview(code);
-      default:
-        return null;
-    }
-  }, [code, language]);
-
   const renderHTMLPreview = (htmlCode: string) => {
     // Simular renderização de HTML (em produção, usar WebView)
     const preview = htmlCode.substring(0, 200);
@@ -214,6 +196,15 @@ export function CodePreview({
   if (!visible) {
     return null;
   }
+
+  const previewContent =
+    !code.trim()
+      ? null
+      : language === 'html'
+        ? renderHTMLPreview(code)
+        : language === 'css'
+          ? renderCSSPreview(code)
+          : renderPythonPreview(code);
 
   return (
     <View style={styles.container}>

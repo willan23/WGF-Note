@@ -10,8 +10,11 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
-import { executePythonCode, validatePythonCode, formatExecutionOutput } from '@/lib/python-executor';
+import { validatePythonCode, formatExecutionOutput } from '@/lib/python-executor';
+import { trpc } from '@/lib/trpc';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/hooks/use-auth';
+import { AuthModal } from '@/components/auth-modal';
 
 export function CodeExecutionPanel() {
   const colors = useColors();
@@ -19,10 +22,17 @@ export function CodeExecutionPanel() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { isAuthenticated, refresh } = useAuth();
+  const executeMutation = trpc.python.execute.useMutation();
 
   const handleExecuteCode = async () => {
     if (!state.currentFile) {
       setError('Nenhum ficheiro aberto');
+      return;
+    }
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
       return;
     }
 
@@ -40,7 +50,7 @@ export function CodeExecutionPanel() {
     setOutput('A preparar execução...\n');
 
     try {
-      const result = await executePythonCode(code);
+      const result = await executeMutation.mutateAsync({ code });
       const formattedOutput = formatExecutionOutput(result);
       setOutput(formattedOutput);
 
@@ -191,7 +201,11 @@ export function CodeExecutionPanel() {
           </View>
         )}
       </ScrollView>
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthenticated={refresh}
+      />
     </View>
   );
 }
-

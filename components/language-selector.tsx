@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { CodeLanguage, getAvailableLanguages } from '@/lib/types-extended';
+import { getAvailableLanguages, type CodeLanguage } from '@/lib/types-extended';
 
 interface LanguageSelectorProps {
   visible: boolean;

@@ -59,7 +59,7 @@ function checkPrerequisites() {
 function buildWeb() {
     log('\n🌐 Iniciando build para WEB...', 'bright');
 
-    if (!execCommand('npx expo export:web --clear', 'Build Web')) {
+    if (!execCommand('npx expo export --platform web --clear', 'Build Web')) {
         return false;
     }
 

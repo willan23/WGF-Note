@@ -1,5 +1,7 @@
 # 🎉 Implementação Completa de Funcionalidades Pendentes
 
+> Nota de estado — este documento é histórico. A fonte atual de verdade sobre o produto é o `README.md`: a base local-first já inclui execução Python real, autenticação, cloud sync manual, colaboração por ficheiro e empacotamento desktop, enquanto colaboração em tempo real e hardening de publicação continuam em evolução.
+
 ## ✅ Status: TODAS AS FUNCIONALIDADES IMPLEMENTADAS
 
 Data: 15 de Janeiro de 2026

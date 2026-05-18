@@ -2,7 +2,7 @@
  * Utilitário de formatação de código para múltiplas linguagens
  */
 
-import { CodeLanguage } from './types-extended';
+import type { CodeLanguage } from './types-extended';
 import { formatHTML } from './html-analyzer';
 import { formatCSS } from './css-analyzer';
 

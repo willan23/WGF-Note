@@ -1,19 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
   ActivityIndicator,
-  ScrollView,
-  Pressable,
   Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useColors } from '@/hooks/use-colors';
 import {
-  generateWebViewHTML,
-  createWebViewDataURL,
   extractCodeFromHTML,
+  generateWebViewHTML,
   validateHTML,
 } from '@/lib/webview-renderer';
 
@@ -22,6 +21,21 @@ interface WebViewPreviewProps {
   language: 'html' | 'css' | 'python';
   onError?: (error: string) => void;
   onConsoleLog?: (message: string) => void;
+}
+
+function buildPreviewDocument(code: string, language: WebViewPreviewProps['language']) {
+  if (language === 'html') {
+    const { htmlCode, cssCode, jsCode } = extractCodeFromHTML(code);
+    return generateWebViewHTML(htmlCode, cssCode, jsCode, {
+      enableJavaScript: true,
+      enableConsole: true,
+    });
+  }
+
+  return generateWebViewHTML('', language === 'css' ? code : '', '', {
+    enableJavaScript: true,
+    enableConsole: true,
+  });
 }
 
 export function WebViewPreview({
@@ -33,161 +47,55 @@ export function WebViewPreview({
   const colors = useColors();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [showConsole, setShowConsole] = useState(false);
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: colors.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    title: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.foreground,
-    },
-    consoleButton: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 4,
-      backgroundColor: colors.primary,
-    },
-    consoleButtonText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: colors.background,
-    },
-    content: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    previewPlaceholder: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 16,
-    },
-    placeholderText: {
-      fontSize: 14,
-      color: colors.muted,
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    errorContainer: {
-      backgroundColor: colors.error,
-      padding: 12,
-      margin: 8,
-      borderRadius: 6,
-    },
-    errorText: {
-      color: colors.background,
-      fontSize: 12,
-      fontWeight: '500',
-    },
-    consoleContainer: {
-      backgroundColor: colors.surface,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      maxHeight: '40%',
-      padding: 8,
-    },
-    consoleTitle: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.foreground,
-      marginBottom: 8,
-    },
-    consoleLog: {
-      fontSize: 11,
-      color: colors.foreground,
-      fontFamily: 'Courier New',
-      marginBottom: 4,
-      paddingVertical: 2,
-      paddingHorizontal: 4,
-      backgroundColor: colors.background,
-      borderRadius: 2,
-    },
-    consoleEmpty: {
-      fontSize: 11,
-      color: colors.muted,
-      fontStyle: 'italic',
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-  });
+  const [previewDocument, setPreviewDocument] = useState(() =>
+    buildPreviewDocument(code, language),
+  );
 
   useEffect(() => {
-    if (language === 'html' || language === 'css') {
-      setIsLoading(true);
+    if (language === 'python') {
       setError(null);
-      setConsoleLogs([]);
+      setWarning(null);
+      setIsLoading(false);
+      return;
+    }
 
+    setIsLoading(true);
+    const timeoutId = setTimeout(() => {
       try {
-        // Validar HTML se for HTML
         if (language === 'html') {
           const validation = validateHTML(code);
           if (!validation.valid) {
-            setError(`Erros de HTML: ${validation.errors.join(', ')}`);
-            onError?.(validation.errors.join(', '));
+            const message = validation.errors.join(', ');
+            setError(message);
+            setWarning(null);
+            onError?.(message);
+            setIsLoading(false);
+            return;
           }
+
+          setWarning(validation.warnings.join(', ') || null);
+        } else {
+          setWarning(null);
         }
 
-        // Extrair código se for HTML puro
-        if (language === 'html' && code.includes('<style') || code.includes('<script')) {
-          const { htmlCode, cssCode, jsCode } = extractCodeFromHTML(code);
-          // Usar código extraído
-        }
-
-        // Gerar HTML para renderização
-        const htmlCode = language === 'html' ? code : '';
-        const cssCode = language === 'css' ? code : '';
-
-        const webviewHTML = generateWebViewHTML(htmlCode, cssCode, '', {
-          enableJavaScript: true,
-          enableConsole: true,
-        });
-
-        // Criar data URL
-        const dataURL = createWebViewDataURL(htmlCode, cssCode, '', {
-          enableJavaScript: true,
-          enableConsole: true,
-        });
-
-        // Simular carregamento
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 500);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-        setError(errorMessage);
-        onError?.(errorMessage);
+        setError(null);
+        setPreviewDocument(buildPreviewDocument(code, language));
+      } catch (previewError) {
+        const message =
+          previewError instanceof Error ? previewError.message : 'Erro desconhecido';
+        setError(message);
+        setWarning(null);
+        onError?.(message);
+      } finally {
         setIsLoading(false);
       }
-    } else if (language === 'python') {
-      // Para Python, mostrar mensagem informativa
-      setError(null);
-      setIsLoading(false);
-    }
-  }, [code, language]);
+    }, 250);
 
-  const handleClearConsole = () => {
-    setConsoleLogs([]);
-  };
+    return () => clearTimeout(timeoutId);
+  }, [code, language, onError]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -196,11 +104,11 @@ export function WebViewPreview({
       try {
         const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (message.type === 'console-log' || message.type === 'console-error') {
-          setConsoleLogs(prev => [...prev.slice(-49), message.data]);
+          setConsoleLogs((logs) => [...logs.slice(-49), message.data]);
           onConsoleLog?.(message.data);
         }
-      } catch (e) {
-        // Not JSON
+      } catch {
+        // Mensagens externas ao preview não precisam de tratamento.
       }
     };
 
@@ -208,23 +116,148 @@ export function WebViewPreview({
     return () => window.removeEventListener('message', handleMessage);
   }, [onConsoleLog]);
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: colors.background,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        },
+        header: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          backgroundColor: colors.surface,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        },
+        title: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.foreground,
+        },
+        consoleButton: {
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          borderRadius: 4,
+          backgroundColor: colors.primary,
+        },
+        consoleButtonText: {
+          fontSize: 11,
+          fontWeight: '600',
+          color: colors.background,
+        },
+        content: {
+          flex: 1,
+          backgroundColor: colors.background,
+        },
+        previewPlaceholder: {
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 16,
+        },
+        placeholderText: {
+          fontSize: 14,
+          color: colors.muted,
+          textAlign: 'center',
+          marginBottom: 8,
+        },
+        warningContainer: {
+          backgroundColor: `${colors.warning}20`,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.warning,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+        },
+        warningText: {
+          color: colors.warning,
+          fontSize: 12,
+          fontWeight: '500',
+        },
+        errorContainer: {
+          backgroundColor: colors.error,
+          padding: 12,
+          margin: 8,
+          borderRadius: 6,
+        },
+        errorText: {
+          color: colors.background,
+          fontSize: 12,
+          fontWeight: '500',
+        },
+        consoleContainer: {
+          backgroundColor: colors.surface,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          maxHeight: '40%',
+          padding: 8,
+        },
+        consoleTitle: {
+          fontSize: 12,
+          fontWeight: '600',
+          color: colors.foreground,
+          marginBottom: 8,
+        },
+        consoleLog: {
+          fontSize: 11,
+          color: colors.foreground,
+          fontFamily: 'Courier New',
+          marginBottom: 4,
+          paddingVertical: 2,
+          paddingHorizontal: 4,
+          backgroundColor: colors.background,
+          borderRadius: 2,
+        },
+        consoleEmpty: {
+          fontSize: 11,
+          color: colors.muted,
+          fontStyle: 'italic',
+        },
+        loadingContainer: {
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+        },
+      }),
+    [
+      colors.background,
+      colors.border,
+      colors.error,
+      colors.foreground,
+      colors.muted,
+      colors.primary,
+      colors.surface,
+      colors.warning,
+    ],
+  );
+
+  const handleClearConsole = () => setConsoleLogs([]);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>
           {language === 'html' ? '🌐 Pré-visualização HTML' : '🎨 Pré-visualização CSS'}
         </Text>
-        {(language === 'html' || language === 'css') && (
-          <Pressable
-            style={styles.consoleButton}
-            onPress={() => setShowConsole(!showConsole)}
-          >
+        {language !== 'python' ? (
+          <Pressable style={styles.consoleButton} onPress={() => setShowConsole((value) => !value)}>
             <Text style={styles.consoleButtonText}>
               {showConsole ? 'Ocultar' : 'Console'} ({consoleLogs.length})
             </Text>
           </Pressable>
-        )}
+        ) : null}
       </View>
+
+      {warning ? (
+        <View style={styles.warningContainer}>
+          <Text style={styles.warningText}>⚠️ {warning}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.content}>
         {isLoading ? (
@@ -245,66 +278,49 @@ export function WebViewPreview({
           <View style={styles.previewPlaceholder}>
             <Text style={styles.placeholderText}>🐍 Python</Text>
             <Text style={styles.placeholderText}>
-              A pré-visualização de Python não é suportada no editor móvel.
-            </Text>
-            <Text style={styles.placeholderText}>
-              Use o painel de execução para testar o código.
+              A pré-visualização de Python não faz parte desta versão local-first.
             </Text>
           </View>
+        ) : Platform.OS === 'web' ? (
+          <iframe
+            title="preview"
+            srcDoc={previewDocument}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              backgroundColor: colors.background,
+            }}
+          />
         ) : (
-          Platform.OS === 'web' ? (
-            <iframe
-              title="preview"
-              srcDoc={generateWebViewHTML(
-                language === 'html' ? code : '',
-                language === 'css' ? code : '',
-                '',
-                { enableJavaScript: true, enableConsole: true }
-              )}
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                backgroundColor: colors.background,
-              }}
-            />
-          ) : (
-            <WebView
-              key={code.length + language} // Forçar re-renderização quando código muda
-              source={{
-                html: generateWebViewHTML(
-                  language === 'html' ? code : '',
-                  language === 'css' ? code : '',
-                  '',
-                  { enableJavaScript: true, enableConsole: true }
-                )
-              }}
-              style={styles.content}
-              onMessage={(event: any) => {
-                try {
-                  const message = JSON.parse(event.nativeEvent.data);
-                  if (message.type === 'console-log' || message.type === 'console-error') {
-                    setConsoleLogs(prev => [...prev.slice(-49), message.data]);
-                    onConsoleLog?.(message.data);
-                  }
-                } catch (e) {
-                  // Not a JSON message or not from our console mock
+          <WebView
+            key={`${language}-${previewDocument.length}`}
+            source={{ html: previewDocument }}
+            style={styles.content}
+            onMessage={(event) => {
+              try {
+                const message = JSON.parse(event.nativeEvent.data);
+                if (message.type === 'console-log' || message.type === 'console-error') {
+                  setConsoleLogs((logs) => [...logs.slice(-49), message.data]);
+                  onConsoleLog?.(message.data);
                 }
-              }}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              startInLoadingState={true}
-              renderLoading={() => (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator color={colors.primary} size="large" />
-                </View>
-              )}
-            />
-          )
+              } catch {
+                // Mensagens não JSON são ignoradas.
+              }
+            }}
+            javaScriptEnabled
+            domStorageEnabled
+            startInLoadingState
+            renderLoading={() => (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color={colors.primary} size="large" />
+              </View>
+            )}
+          />
         )}
       </View>
 
-      {showConsole && (consoleLogs.length > 0 || language !== 'python') && (
+      {showConsole && (consoleLogs.length > 0 || language !== 'python') ? (
         <View style={styles.consoleContainer}>
           <View
             style={{
@@ -315,7 +331,7 @@ export function WebViewPreview({
             }}
           >
             <Text style={styles.consoleTitle}>📋 Console</Text>
-            {consoleLogs.length > 0 && (
+            {consoleLogs.length > 0 ? (
               <Pressable
                 onPress={handleClearConsole}
                 style={{
@@ -327,13 +343,13 @@ export function WebViewPreview({
               >
                 <Text style={{ fontSize: 10, color: colors.primary }}>Limpar</Text>
               </Pressable>
-            )}
+            ) : null}
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
             {consoleLogs.length > 0 ? (
-              consoleLogs.map((log, idx) => (
-                <Text key={idx} style={styles.consoleLog}>
+              consoleLogs.map((log, index) => (
+                <Text key={`${log}-${index}`} style={styles.consoleLog}>
                   {log}
                 </Text>
               ))
@@ -342,7 +358,7 @@ export function WebViewPreview({
             )}
           </ScrollView>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

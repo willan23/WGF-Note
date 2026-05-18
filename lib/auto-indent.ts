@@ -64,9 +64,16 @@ export function autoIndentLine(
         indentLevel = autoIndentPython(trimmedPrevious, trimmedCurrent, indentLevel);
     } else if (language === 'html') {
         indentLevel = autoIndentHTML(trimmedPrevious, trimmedCurrent, indentLevel);
-    } else if (language === 'css') {
+    } else if (language === 'css' || language === 'json') {
         indentLevel = autoIndentCSS(trimmedPrevious, trimmedCurrent, indentLevel);
-    } else if (language === 'javascript' || language === 'typescript') {
+    } else if (
+        language === 'javascript' ||
+        language === 'typescript' ||
+        language === 'java' ||
+        language === 'c' ||
+        language === 'cpp' ||
+        language === 'csharp'
+    ) {
         indentLevel = autoIndentJavaScript(trimmedPrevious, trimmedCurrent, indentLevel);
     }
 

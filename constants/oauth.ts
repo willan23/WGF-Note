@@ -23,6 +23,7 @@ export const APP_ID = env.appId;
 export const OWNER_OPEN_ID = env.ownerId;
 export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
+export const isExternalOAuthConfigured = () => Boolean(OAUTH_PORTAL_URL);
 
 /**
  * Get the API base URL, deriving from current hostname if not set.
@@ -37,6 +38,13 @@ export function getApiBaseUrl(): string {
 
   // On web, derive from current hostname by replacing port 8081 with 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
+    if (window.location.protocol === "file:") {
+      const runtimeApiBaseUrl = (window as Window & {
+        __NOTE_PY_API_BASE_URL__?: string;
+      }).__NOTE_PY_API_BASE_URL__;
+      return (runtimeApiBaseUrl || "http://127.0.0.1:3000").replace(/\/$/, "");
+    }
+
     const { protocol, hostname } = window.location;
     // Pattern: 8081-sandboxid.region.domain -> 3000-sandboxid.region.domain
     const apiHostname = hostname.replace(/^8081-/, "3000-");
@@ -64,6 +72,10 @@ const encodeState = (value: string) => {
 };
 
 export const getLoginUrl = () => {
+  if (!OAUTH_PORTAL_URL) {
+    throw new Error("OAuth externo não configurado.");
+  }
+
   let redirectUri: string;
 
   if (ReactNative.Platform.OS === "web") {
