@@ -28,7 +28,7 @@ await writeFile(
     {
       name: rootPackage.name,
       version: rootPackage.version,
-      description: 'Editor local-first de código para Android e desktop.',
+      description: 'Editor local-first de código para desktop.',
       author: 'WGF Note',
       main: 'main.cjs',
       private: true,

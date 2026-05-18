@@ -359,7 +359,7 @@ export default function SettingsScreen() {
           <View style={styles.fieldGroup}>
             <Text style={styles.settingLabel}>Endereço do Ollama</Text>
             <Text style={styles.settingDescription}>
-              No telemóvel real, use o IP do computador na rede local.
+              No desktop, o valor padrão normalmente é http://127.0.0.1:11434.
             </Text>
             <TextInput
               accessibilityLabel="Endereço do Ollama"

@@ -18,7 +18,7 @@ Todas as alterações relevantes deste projeto serão documentadas aqui.
 
 - `EditorContext` passou a concentrar ciclo de vida do ficheiro, histórico por ficheiro, seleção real, cursor e linguagem ativa.
 - O produto foi recentrado numa experiência honesta: recursos simulados saíram da superfície principal e previews só aparecem quando são reais.
-- A gestão de ficheiros Android ganhou navegação por pastas, recentes por path, renomear/eliminar e tratamento de ficheiros desaparecidos.
+- A gestão de ficheiros desktop ganhou navegação por pastas, recentes por path, renomear/eliminar e tratamento de ficheiros desaparecidos.
 - O preview HTML/CSS passou a separar avisos de erros bloqueantes e a atualizar com debounce.
 - A pipeline passou a exigir `check`, `lint` e `test` antes de `build`.
 

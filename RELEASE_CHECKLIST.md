@@ -1,4 +1,4 @@
-# Checklist de release — Note Py++ 1.0.0
+# Checklist de release — WGF Note 1.0.0
 
 ## 1. Qualidade obrigatória
 
@@ -12,12 +12,12 @@
 
 ## 2. Aceitação manual ainda necessária antes de publicar fora do teu ambiente
 
-- [ ] Android físico: criar → editar → guardar → reabrir
-- [ ] Android físico: navegar por pastas, renomear e eliminar
-- [ ] Android físico: testar autosave, tema, word wrap e templates no cursor real
-- [ ] Android físico: testar login local apontando `EXPO_PUBLIC_API_BASE_URL` para o IP do computador
-- [ ] Windows: instalar a partir de `release/Note-Py-Plus-Plus-1.0.0-Setup.exe`
-- [ ] Windows: abrir a app instalada, executar Python e confirmar sync local
+- [ ] Windows: instalar a partir de `release/WGF-Note-1.0.0-Setup.exe`
+- [ ] Windows: abrir ficheiros e pastas reais do PC
+- [ ] Windows: criar → editar → guardar → reabrir
+- [ ] Windows: navegar no workspace, renomear e eliminar
+- [ ] Windows: testar autosave, tema, word wrap, templates e IA no cursor real
+- [ ] Windows: executar Python e confirmar sync local
 
 ## 3. Antes de uma publicação pública
 
@@ -26,13 +26,13 @@
 - [ ] Trocar segredos locais por segredos de produção
 - [ ] Preparar backups do MySQL
 - [ ] Definir política de privacidade e termos
-- [ ] Criar screenshots, ícones finais e materiais da store
-- [ ] Fazer QA em pelo menos dois dispositivos Android reais
+- [ ] Criar screenshots e ícones finais do instalador
+- [ ] Fazer QA em pelo menos dois ambientes Windows reais
 - [ ] Rever acessibilidade e comportamento com ficheiros grandes
 
 ## 4. Artefactos desta release
 
-- Windows installer: `release/Note-Py-Plus-Plus-1.0.0-Setup.exe`
-- App desempacotada: `release/win-unpacked/Note Py++.exe`
+- Windows installer: `release/WGF-Note-1.0.0-Setup.exe`
+- App desempacotada: `release/win-unpacked/WGF Note.exe`
 - Build web estático: `dist/`
 - Backend empacotado: `server-dist/index.cjs`
