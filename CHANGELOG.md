@@ -2,6 +2,14 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.1] - 2026-05-18
+
+### Corrigido
+
+- Assets do desktop passaram a ser servidos fora do fallback HTML, eliminando os avisos de fontes de ícones no build empacotado.
+- O foco do produto foi consolidado em desktop-only e o empacotamento Windows passou a sair limpo sob o nome **WGF Note**.
+- QA desktop confirmado para ponte Electron, filesystem real, árvore de projeto, gestor de ficheiros e Ollama local.
+
 ## [1.0.0] - 2026-05-18
 
 ### Adicionado

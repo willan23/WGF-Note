@@ -115,7 +115,9 @@ function getContentType(filePath) {
 }
 
 async function startDesktopFrontend() {
-  const distRoot = getProjectPath('dist');
+  const distRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'dist')
+    : getProjectPath('dist');
   const frontendPort = await findAvailablePort(4173);
   frontendBaseUrl = `http://127.0.0.1:${frontendPort}`;
 
@@ -311,6 +313,7 @@ function registerDesktopIpcHandlers() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    title: 'WGF Note',
     width: 1280,
     height: 840,
     minWidth: 960,

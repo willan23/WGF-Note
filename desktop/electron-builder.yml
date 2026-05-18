@@ -5,6 +5,9 @@ directories:
   output: release
 files:
   - "**/*"
+extraResources:
+  - from: dist
+    to: dist
 extraMetadata:
   main: main.cjs
 asar: true
