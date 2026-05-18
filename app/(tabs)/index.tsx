@@ -16,6 +16,12 @@ import { WebViewPreview } from "@/components/webview-preview";
 import { FileManager } from "@/components/file-manager";
 import { ProjectTree } from "@/components/project-tree";
 import { WorkspaceExplorer } from "@/components/workspace-explorer";
+import { WorkspaceSearchPanel } from "@/components/workspace-search-panel";
+import { EditorBreadcrumbs } from "@/components/editor-breadcrumbs";
+import {
+  CommandPalette,
+  type CommandPaletteItem,
+} from "@/components/command-palette";
 import {
   WorkbenchBottomPanel,
   type WorkbenchBottomPanelTab,
@@ -35,6 +41,19 @@ import type { SyntaxError } from "@/lib/types";
 import { router } from "expo-router";
 import { getOffsetFromLineAndColumn, replaceSelection } from "@/lib/editor-state";
 import { getLanguageConfig, getLanguageFeatures } from "@/lib/types-extended";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import {
+  formatShortcutDisplay,
+  getShortcutByAction,
+  type ShortcutAction,
+} from "@/lib/keyboard-shortcuts";
+
+type SidebarMode = 'explorer' | 'search';
+
+function getShortcutLabel(action: ShortcutAction): string | undefined {
+  const shortcut = getShortcutByAction(action);
+  return shortcut ? formatShortcutDisplay(shortcut.keys) : undefined;
+}
 
 function EditorScreenContent() {
   const colors = useColors();
@@ -60,6 +79,7 @@ function EditorScreenContent() {
   const [syntaxErrors, setSyntaxErrors] = useState<SyntaxError[]>([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showProjectSearchModal, setShowProjectSearchModal] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showLocalAIModal, setShowLocalAIModal] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -67,6 +87,7 @@ function EditorScreenContent() {
   const [showFileManager, setShowFileManager] = useState(false);
   const [showProjectTree, setShowProjectTree] = useState(false);
   const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>('explorer');
   const [activeBottomPanel, setActiveBottomPanel] =
     useState<WorkbenchBottomPanelTab | null>(null);
   const { isPreviewVisible, togglePreview } = useSplitView();
@@ -105,6 +126,36 @@ function EditorScreenContent() {
       updateFileContent(state.currentFile.id, formatted);
     }
   }, [currentLanguage, settings.indentSize, state.currentFile, updateFileContent]);
+
+  const handleProjectSearch = useCallback(() => {
+    if (width >= 980) {
+      setSidebarMode('search');
+      setShowWorkspaceSidebar(true);
+      return;
+    }
+
+    setShowProjectSearchModal(true);
+  }, [width]);
+
+  const handleToggleWorkspace = useCallback(() => {
+    if (width >= 980) {
+      setSidebarMode('explorer');
+      setShowWorkspaceSidebar((visible) =>
+        sidebarMode === 'explorer' ? !visible : true,
+      );
+      return;
+    }
+
+    setShowProjectTree(true);
+  }, [sidebarMode, width]);
+
+  const handleToggleTerminal = useCallback(() => {
+    setActiveBottomPanel((current) => (current === 'terminal' ? null : 'terminal'));
+  }, []);
+
+  const handleToggleProblems = useCallback(() => {
+    setActiveBottomPanel((current) => (current === 'problems' ? null : 'problems'));
+  }, []);
 
   useEffect(() => {
     const content = state.currentFile?.content ?? '';
@@ -155,6 +206,114 @@ function EditorScreenContent() {
       })),
     [state.openFiles],
   );
+
+  const commandPaletteItems = useMemo<CommandPaletteItem[]>(() => {
+    const items: CommandPaletteItem[] = [
+      {
+        id: 'new',
+        label: 'Novo ficheiro',
+        description: 'Cria um rascunho no editor',
+        shortcut: getShortcutLabel('new'),
+        icon: 'add-outline',
+        onSelect: handleNew,
+      },
+      {
+        id: 'open',
+        label: 'Abrir ficheiro',
+        description: 'Escolhe um ficheiro do computador',
+        shortcut: getShortcutLabel('open'),
+        icon: 'folder-open-outline',
+        onSelect: () => void handleOpen(),
+      },
+      {
+        id: 'save',
+        label: 'Guardar ficheiro',
+        description: 'Persiste o ficheiro atual',
+        shortcut: getShortcutLabel('save'),
+        icon: 'save-outline',
+        onSelect: () => void handleSave(),
+      },
+      {
+        id: 'search-file',
+        label: 'Pesquisar neste ficheiro',
+        shortcut: getShortcutLabel('search'),
+        icon: 'search-outline',
+        onSelect: () => setShowSearchModal(true),
+      },
+      {
+        id: 'search-project',
+        label: 'Pesquisar no projeto',
+        description: 'Abre a pesquisa lateral do workspace',
+        shortcut: getShortcutLabel('projectSearch'),
+        icon: 'search-circle-outline',
+        onSelect: handleProjectSearch,
+      },
+      {
+        id: 'replace',
+        label: 'Pesquisar e substituir',
+        shortcut: getShortcutLabel('replace'),
+        icon: 'swap-horizontal-outline',
+        onSelect: () => setShowSearchModal(true),
+      },
+      {
+        id: 'format',
+        label: 'Formatar documento',
+        shortcut: getShortcutLabel('format'),
+        icon: 'brush-outline',
+        onSelect: handleFormat,
+      },
+      {
+        id: 'local-ai',
+        label: 'Abrir IA local',
+        description: 'Conversa com o assistente open source configurado',
+        icon: 'sparkles-outline',
+        onSelect: () => setShowLocalAIModal(true),
+      },
+      {
+        id: 'explorer',
+        label: 'Alternar explorador',
+        description: 'Mostra ou recolhe a árvore do projeto',
+        icon: 'git-branch-outline',
+        onSelect: handleToggleWorkspace,
+      },
+      {
+        id: 'terminal',
+        label: 'Alternar terminal',
+        shortcut: getShortcutLabel('terminal'),
+        icon: 'terminal-outline',
+        onSelect: handleToggleTerminal,
+      },
+      {
+        id: 'settings',
+        label: 'Abrir definições',
+        shortcut: getShortcutLabel('settings'),
+        icon: 'settings-outline',
+        onSelect: () => router.push('/(tabs)/settings'),
+      },
+    ];
+
+    if (currentLanguageFeatures.supportsPreview) {
+      items.splice(items.length - 1, 0, {
+        id: 'preview',
+        label: 'Alternar preview',
+        shortcut: getShortcutLabel('preview'),
+        icon: 'eye-outline',
+        onSelect: togglePreview,
+      });
+    }
+
+    return items;
+  }, [
+    currentLanguageFeatures.supportsPreview,
+    handleFormat,
+    handleNew,
+    handleOpen,
+    handleProjectSearch,
+    handleSave,
+    handleToggleTerminal,
+    handleToggleWorkspace,
+    togglePreview,
+  ]);
 
   const handleApplyAIProposal = useCallback(
     (
@@ -220,6 +379,22 @@ function EditorScreenContent() {
     [openFileFromSystemAtRange, state.openFiles],
   );
 
+  useKeyboardShortcuts({
+    onSave: () => void handleSave(),
+    onFormat: handleFormat,
+    onOpen: () => void handleOpen(),
+    onNew: handleNew,
+    onUndo: canUndo ? undo : undefined,
+    onRedo: canRedo ? redo : undefined,
+    onSearch: () => setShowSearchModal(true),
+    onReplace: () => setShowSearchModal(true),
+    onPreview: currentLanguageFeatures.supportsPreview ? togglePreview : undefined,
+    onProjectSearch: handleProjectSearch,
+    onCommandPalette: () => setShowCommandPalette(true),
+    onTerminal: handleToggleTerminal,
+    onSettings: () => router.push('/(tabs)/settings'),
+  });
+
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -260,7 +435,8 @@ function EditorScreenContent() {
         onUndo={canUndo ? undo : undefined}
         onRedo={canRedo ? redo : undefined}
         onSearch={() => setShowSearchModal(true)}
-        onProjectSearch={() => setShowProjectSearchModal(true)}
+        onProjectSearch={handleProjectSearch}
+        onCommandPalette={() => setShowCommandPalette(true)}
         onLocalAI={() => setShowLocalAIModal(true)}
         onSettings={() => router.push('/(tabs)/settings')}
         onTemplates={() => setShowTemplates(true)}
@@ -268,21 +444,10 @@ function EditorScreenContent() {
         onLanguageSelect={() => setShowLanguageSelector(true)}
         onFormat={handleFormat}
         onPreview={currentLanguageFeatures.supportsPreview ? togglePreview : undefined}
-        onProjectTree={() => {
-          if (width >= 980) {
-            setShowWorkspaceSidebar((visible) => !visible);
-            return;
-          }
-
-          setShowProjectTree(true);
-        }}
+        onProjectTree={handleToggleWorkspace}
         onFileManager={() => setShowFileManager(true)}
-        onProblems={() =>
-          setActiveBottomPanel((current) => (current === 'problems' ? null : 'problems'))
-        }
-        onTerminal={() =>
-          setActiveBottomPanel((current) => (current === 'terminal' ? null : 'terminal'))
-        }
+        onProblems={handleToggleProblems}
+        onTerminal={handleToggleTerminal}
         problemsActive={activeBottomPanel === 'problems'}
         terminalActive={activeBottomPanel === 'terminal'}
       />
@@ -290,12 +455,22 @@ function EditorScreenContent() {
       <View style={styles.workbenchBody}>
         {shouldShowEmbeddedSidebar ? (
           <View style={styles.sidebar}>
-            <WorkspaceExplorer />
+            {sidebarMode === 'explorer' ? (
+              <WorkspaceExplorer />
+            ) : (
+              <WorkspaceSearchPanel
+                onAdvancedSearch={() => setShowProjectSearchModal(true)}
+              />
+            )}
           </View>
         ) : null}
 
         <View style={styles.editorColumn}>
           <EditorTabs />
+          <EditorBreadcrumbs
+            onOpenSearch={handleProjectSearch}
+            onOpenPalette={() => setShowCommandPalette(true)}
+          />
 
           {/* Main content area */}
           <View style={styles.mainContent}>
@@ -344,6 +519,11 @@ function EditorScreenContent() {
       <ProjectSearchModal
         visible={showProjectSearchModal}
         onClose={() => setShowProjectSearchModal(false)}
+      />
+      <CommandPalette
+        visible={showCommandPalette}
+        commands={commandPaletteItems}
+        onClose={() => setShowCommandPalette(false)}
       />
       <LocalAIModal
         visible={showLocalAIModal}

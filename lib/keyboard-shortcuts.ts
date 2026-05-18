@@ -16,6 +16,9 @@ export type ShortcutAction =
   | 'comment'
   | 'execute'
   | 'preview'
+  | 'projectSearch'
+  | 'commandPalette'
+  | 'terminal'
   | 'settings'
   | 'close';
 
@@ -38,7 +41,7 @@ export const KEYBOARD_SHORTCUTS: Shortcut[] = [
   },
   {
     action: 'format',
-    keys: ['ctrl', 'shift', 'f'],
+    keys: ['alt', 'shift', 'f'],
     description: 'Formatar código',
     platform: 'all',
   },
@@ -92,8 +95,26 @@ export const KEYBOARD_SHORTCUTS: Shortcut[] = [
   },
   {
     action: 'preview',
-    keys: ['ctrl', 'shift', 'p'],
+    keys: ['ctrl', 'alt', 'p'],
     description: 'Pré-visualização',
+    platform: 'all',
+  },
+  {
+    action: 'projectSearch',
+    keys: ['ctrl', 'shift', 'f'],
+    description: 'Pesquisar no projeto',
+    platform: 'all',
+  },
+  {
+    action: 'commandPalette',
+    keys: ['ctrl', 'shift', 'p'],
+    description: 'Abrir comandos',
+    platform: 'all',
+  },
+  {
+    action: 'terminal',
+    keys: ['ctrl', 'j'],
+    description: 'Alternar terminal',
     platform: 'all',
   },
   {
@@ -205,6 +226,8 @@ export function isValidShortcut(keys: string[]): boolean {
     'arrowdown',
     'arrowleft',
     'arrowright',
+    '/',
+    ',',
     ...Array.from('abcdefghijklmnopqrstuvwxyz0123456789'),
   ];
 

@@ -2,6 +2,19 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.2] - 2026-05-18
+
+### Adicionado
+
+- Paleta de comandos com ações essenciais, filtragem e atalhos visíveis.
+- Pesquisa lateral no workspace com resultados agrupados, filtros de maiúsculas/minúsculas e palavra inteira.
+- Breadcrumbs do ficheiro ativo com acesso rápido à pesquisa global e à paleta de comandos.
+
+### Alterado
+
+- O fluxo desktop passou a comportar-se mais como uma bancada IDE: pesquisa global embutida no sidebar, atalhos estilo VS Code e terminal acessível por teclado.
+- O preview mudou para `Ctrl+Alt+P`, a formatação para `Alt+Shift+F` e o terminal para `Ctrl+J`, libertando `Ctrl+Shift+P` para comandos e `Ctrl+Shift+F` para pesquisa no projeto.
+
 ## [1.0.1] - 2026-05-18
 
 ### Corrigido

@@ -2,11 +2,11 @@
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, agora focado exclusivamente em desktop.
 
-**Versão atual:** `1.0.0` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
+**Versão atual:** `1.0.2` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
 
 ## Estado atual
 
-- **Pronto no núcleo:** edição multi-linguagem, gestão local de ficheiros, árvore de projeto com criação/renomeação/eliminação, pesquisa e substituição globais no workspace com pré-visualização, seleção por ficheiro/linha e inspeção direta no editor, IA local via Ollama com chat contextual, explicações e propostas de alteração revisáveis, execução Python real por backend autenticado, sync cloud manual do workspace, partilha de ficheiros com papéis de leitor/editor, restauração de sessão, syntax highlighting básico, templates, sugestões, preview HTML/CSS e preferências locais.
+- **Pronto no núcleo:** edição multi-linguagem, bancada desktop com paleta de comandos, breadcrumbs e atalhos visíveis, gestão local de ficheiros, árvore de projeto com criação/renomeação/eliminação, pesquisa e substituição globais no workspace com pré-visualização, seleção por ficheiro/linha e inspeção direta no editor, IA local via Ollama com chat contextual, explicações e propostas de alteração revisáveis, execução Python real por backend autenticado, sync cloud manual do workspace, partilha de ficheiros com papéis de leitor/editor, restauração de sessão, syntax highlighting básico, templates, sugestões, preview HTML/CSS e preferências locais.
 - **Ainda fora da experiência principal:** colaboração em tempo real caractere-a-caractere, resolução visual avançada de conflitos e publicação pronta de infraestrutura. A base funcional já existe, mas estas camadas ainda pedem hardening antes de serem tratadas como produto final.
 - **Critério de qualidade da sprint atual:** `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm build:web` e `pnpm desktop:make` precisam passar antes de considerar o app estável.
 

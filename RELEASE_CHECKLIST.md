@@ -1,4 +1,4 @@
-# Checklist de release — WGF Note 1.0.1
+# Checklist de release — WGF Note 1.0.2
 
 ## 1. Qualidade obrigatória
 
@@ -12,7 +12,7 @@
 
 ## 2. Aceitação manual ainda necessária antes de publicar fora do teu ambiente
 
-- [ ] Windows: instalar a partir de `release/WGF-Note-1.0.1-Setup.exe`
+- [ ] Windows: instalar a partir de `release/WGF-Note-1.0.2-Setup.exe`
 - [ ] Windows: abrir ficheiros e pastas reais do PC
 - [ ] Windows: criar → editar → guardar → reabrir
 - [ ] Windows: navegar no workspace, renomear e eliminar
@@ -32,7 +32,7 @@
 
 ## 4. Artefactos desta release
 
-- Windows installer: `release/WGF-Note-1.0.1-Setup.exe`
+- Windows installer: `release/WGF-Note-1.0.2-Setup.exe`
 - App desempacotada: `release/win-unpacked/WGF Note.exe`
 - Build web estático: `dist/`
 - Backend empacotado: `server-dist/index.cjs`

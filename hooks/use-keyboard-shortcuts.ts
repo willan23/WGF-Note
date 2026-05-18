@@ -19,6 +19,9 @@ interface ShortcutHandlers {
   onComment?: () => void;
   onExecute?: () => void;
   onPreview?: () => void;
+  onProjectSearch?: () => void;
+  onCommandPalette?: () => void;
+  onTerminal?: () => void;
   onSettings?: () => void;
   onClose?: () => void;
 }
@@ -28,6 +31,11 @@ interface ShortcutHandlers {
  */
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
   const pressedKeysRef = useRef<Set<string>>(new Set());
+  const handlersRef = useRef(handlers);
+
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -58,9 +66,11 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         if (matchesShortcut(pressedKeysRef.current, shortcut)) {
           event.preventDefault();
 
-      // Executar handler correspondente
-      const actionName = `on${shortcut.action.charAt(0).toUpperCase() + shortcut.action.slice(1)}`;
-      const handler = (handlers as Record<string, any>)[actionName] as (() => void) | undefined;
+          // Executar handler correspondente
+          const actionName = `on${shortcut.action.charAt(0).toUpperCase() + shortcut.action.slice(1)}`;
+          const handler = (handlersRef.current as Record<string, unknown>)[actionName] as
+            | (() => void)
+            | undefined;
 
           if (handler) {
             handler();
@@ -71,7 +81,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         }
       }
     },
-    [handlers]
+    []
   );
 
   const handleKeyUp = useCallback((event: KeyboardEvent) => {
@@ -97,12 +107,12 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
 
   useEffect(() => {
     if (Platform.OS === 'web') {
-      window.addEventListener('keydown', handleKeyDown);
-      window.addEventListener('keyup', handleKeyUp);
+      window.addEventListener('keydown', handleKeyDown, true);
+      window.addEventListener('keyup', handleKeyUp, true);
 
       return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('keyup', handleKeyUp);
+        window.removeEventListener('keydown', handleKeyDown, true);
+        window.removeEventListener('keyup', handleKeyUp, true);
       };
     }
   }, [handleKeyDown, handleKeyUp]);

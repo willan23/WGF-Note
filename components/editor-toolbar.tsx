@@ -13,6 +13,7 @@ interface EditorToolbarProps {
   onRedo?: () => void;
   onSearch?: () => void;
   onProjectSearch?: () => void;
+  onCommandPalette?: () => void;
   onLocalAI?: () => void;
   onSettings?: () => void;
   onTemplates?: () => void;
@@ -36,6 +37,7 @@ export function EditorToolbar({
   onRedo,
   onSearch,
   onProjectSearch,
+  onCommandPalette,
   onLocalAI,
   onSettings,
   onTemplates,
@@ -187,6 +189,7 @@ export function EditorToolbar({
         <View style={styles.separator} />
         <ToolButton label="Pesquisar" icon="search-outline" onPress={onSearch} />
         <ToolButton label="No projeto" icon="search-circle-outline" onPress={onProjectSearch} />
+        <ToolButton label="Comandos" icon="flash-outline" onPress={onCommandPalette} />
         <ToolButton label="IA local" icon="sparkles-outline" onPress={onLocalAI} />
         <View style={styles.separator} />
         <ToolButton label="Templates" icon="copy-outline" onPress={onTemplates} />
