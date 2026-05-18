@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/use-colors';
@@ -10,6 +10,12 @@ interface EditorTabProps {
   active: boolean;
   onSelect: (file: PythonFile) => void;
   onClose: (fileId: string) => void;
+  onDragStart: (fileId: string) => void;
+  onDragEnter: (fileId: string) => void;
+  onDrop: (fileId: string, draggedFileId?: string) => void;
+  onDragEnd: () => void;
+  dragging: boolean;
+  dragOver: boolean;
   styles: ReturnType<typeof createStyles>;
   colors: ReturnType<typeof useColors>;
 }
@@ -25,11 +31,17 @@ const EditorTab = memo(function EditorTab({
   active,
   onSelect,
   onClose,
+  onDragStart,
+  onDragEnter,
+  onDrop,
+  onDragEnd,
+  dragging,
+  dragOver,
   styles,
   colors,
 }: EditorTabProps) {
-  return (
-    <View style={[styles.tab, active && styles.tabActive]}>
+  const content = (
+    <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Abrir ${file.name}`}
@@ -63,8 +75,39 @@ const EditorTab = memo(function EditorTab({
       >
         <Text style={[styles.closeText, active && { color: colors.foreground }]}>×</Text>
       </Pressable>
-    </View>
+    </>
   );
+
+  const containerStyle = [
+    styles.tab,
+    active && styles.tabActive,
+    dragging && styles.tabDragging,
+    dragOver && styles.tabDragOver,
+  ];
+
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'div',
+      {
+        draggable: true,
+        onDragStart: (event: React.DragEvent<HTMLDivElement>) => {
+          event.dataTransfer.setData('text/plain', file.id);
+          onDragStart(file.id);
+        },
+        onDragEnter: () => onDragEnter(file.id),
+        onDragOver: (event: React.DragEvent<HTMLDivElement>) => event.preventDefault(),
+        onDrop: (event: React.DragEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          onDrop(file.id, event.dataTransfer.getData('text/plain') || undefined);
+        },
+        onDragEnd,
+        style: StyleSheet.flatten(containerStyle) as React.CSSProperties,
+      },
+      content,
+    );
+  }
+
+  return <View style={containerStyle}>{content}</View>;
 });
 
 function createStyles(colors: ReturnType<typeof useColors>) {
@@ -92,6 +135,13 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     tabActive: {
       backgroundColor: colors.background,
+    },
+    tabDragging: {
+      opacity: 0.58,
+    },
+    tabDragOver: {
+      borderLeftWidth: 2,
+      borderLeftColor: colors.primary,
     },
     tabMain: {
       flexDirection: 'row',
@@ -132,10 +182,29 @@ function createStyles(colors: ReturnType<typeof useColors>) {
 
 export function EditorTabs() {
   const colors = useColors();
-  const { state, openFile, closeFile } = useEditor();
+  const { state, openFile, closeFile, reorderOpenFiles } = useEditor();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [dragOverFileId, setDragOverFileId] = useState<string | null>(null);
   const handleSelect = useCallback((file: PythonFile) => openFile(file), [openFile]);
   const handleClose = useCallback((fileId: string) => closeFile(fileId), [closeFile]);
+  const handleDrop = useCallback(
+    (targetFileId: string, sourceFileId?: string) => {
+      const effectiveDraggedFileId = sourceFileId ?? draggedFileId;
+
+      if (effectiveDraggedFileId && effectiveDraggedFileId !== targetFileId) {
+        reorderOpenFiles(effectiveDraggedFileId, targetFileId);
+      }
+
+      setDraggedFileId(null);
+      setDragOverFileId(null);
+    },
+    [draggedFileId, reorderOpenFiles],
+  );
+  const handleDragEnd = useCallback(() => {
+    setDraggedFileId(null);
+    setDragOverFileId(null);
+  }, []);
 
   if (state.openFiles.length === 0) {
     return null;
@@ -155,6 +224,12 @@ export function EditorTabs() {
             active={state.currentFile?.id === file.id}
             onSelect={handleSelect}
             onClose={handleClose}
+            onDragStart={setDraggedFileId}
+            onDragEnter={setDragOverFileId}
+            onDrop={handleDrop}
+            onDragEnd={handleDragEnd}
+            dragging={draggedFileId === file.id}
+            dragOver={dragOverFileId === file.id && draggedFileId !== file.id}
             styles={styles}
             colors={colors}
           />

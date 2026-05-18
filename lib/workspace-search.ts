@@ -20,6 +20,12 @@ export interface WorkspaceSearchResult {
   preview: string;
 }
 
+export interface WorkspaceFileEntry {
+  path: string;
+  name: string;
+  relativePath: string;
+}
+
 export interface WorkspaceSearchDependencies {
   listFiles: (directoryUri: string) => Promise<FileInfo[]>;
   readFile: (filePath: string) => Promise<string>;
@@ -96,6 +102,37 @@ function createPreview(content: string, start: number): string {
 
 export function getWorkspaceReplacementChangeId(path: string, line: number): string {
   return `${path}::line:${line}`;
+}
+
+export async function listWorkspaceFiles(
+  rootUri: string,
+  dependencies: Pick<WorkspaceSearchDependencies, 'listFiles'>,
+): Promise<WorkspaceFileEntry[]> {
+  const files: WorkspaceFileEntry[] = [];
+
+  const visitDirectory = async (directoryUri: string): Promise<void> => {
+    const children = await dependencies.listFiles(directoryUri);
+
+    for (const child of children) {
+      if (child.isDirectory) {
+        await visitDirectory(child.uri);
+        continue;
+      }
+
+      if (!isSearchableWorkspaceFile(child)) {
+        continue;
+      }
+
+      files.push({
+        path: child.uri,
+        name: child.name,
+        relativePath: getWorkspaceRelativePath(rootUri, child.uri),
+      });
+    }
+  };
+
+  await visitDirectory(rootUri);
+  return files;
 }
 
 function createReplacementChanges(

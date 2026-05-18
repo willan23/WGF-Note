@@ -26,6 +26,10 @@ import {
 interface ProjectSearchModalProps {
   visible: boolean;
   onClose: () => void;
+  initialQuery?: string;
+  initialReplacement?: string;
+  initialCaseSensitive?: boolean;
+  initialWholeWord?: boolean;
 }
 
 interface SearchResultRowProps {
@@ -562,7 +566,14 @@ function createStyles(colors: ReturnType<typeof useColors>) {
   });
 }
 
-export function ProjectSearchModal({ visible, onClose }: ProjectSearchModalProps) {
+export function ProjectSearchModal({
+  visible,
+  onClose,
+  initialQuery,
+  initialReplacement,
+  initialCaseSensitive,
+  initialWholeWord,
+}: ProjectSearchModalProps) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const {
@@ -581,6 +592,29 @@ export function ProjectSearchModal({ visible, onClose }: ProjectSearchModalProps
   const [refreshToken, setRefreshToken] = useState(0);
   const [pendingPlan, setPendingPlan] = useState<WorkspaceReplacementPlanItem[] | null>(null);
   const [selectedChangeIds, setSelectedChangeIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (initialQuery !== undefined) {
+      setQuery(initialQuery);
+    }
+    if (initialReplacement !== undefined) {
+      setReplacement(initialReplacement);
+    }
+    if (initialCaseSensitive !== undefined) {
+      setCaseSensitive(initialCaseSensitive);
+    }
+    if (initialWholeWord !== undefined) {
+      setWholeWord(initialWholeWord);
+    }
+  }, [
+    initialCaseSensitive,
+    initialQuery,
+    initialReplacement,
+    initialWholeWord,
+    visible,
+  ]);
 
   const openFileContentByPath = useMemo(
     () =>

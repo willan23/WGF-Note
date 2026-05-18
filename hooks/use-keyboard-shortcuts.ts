@@ -22,6 +22,7 @@ interface ShortcutHandlers {
   onProjectSearch?: () => void;
   onCommandPalette?: () => void;
   onTerminal?: () => void;
+  onNewWindow?: () => void;
   onSettings?: () => void;
   onClose?: () => void;
 }

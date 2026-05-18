@@ -19,6 +19,7 @@ export type ShortcutAction =
   | 'projectSearch'
   | 'commandPalette'
   | 'terminal'
+  | 'newWindow'
   | 'settings'
   | 'close';
 
@@ -48,7 +49,7 @@ export const KEYBOARD_SHORTCUTS: Shortcut[] = [
   {
     action: 'open',
     keys: ['ctrl', 'p'],
-    description: 'Abrir ficheiro',
+    description: 'Ir para ficheiro',
     platform: 'all',
   },
   {
@@ -115,6 +116,12 @@ export const KEYBOARD_SHORTCUTS: Shortcut[] = [
     action: 'terminal',
     keys: ['ctrl', 'j'],
     description: 'Alternar terminal',
+    platform: 'all',
+  },
+  {
+    action: 'newWindow',
+    keys: ['ctrl', 'shift', 'n'],
+    description: 'Nova janela',
     platform: 'all',
   },
   {

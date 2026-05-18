@@ -15,6 +15,7 @@ export interface DesktopBridge {
   movePath: (sourceUri: string, destinationUri: string) => Promise<void>;
   exists: (uri: string) => Promise<boolean>;
   statPath: (uri: string) => Promise<FileInfo | null>;
+  openNewWindow: () => Promise<void>;
   listOllamaModels: (baseUrl: string) => Promise<{ models?: Array<{ name: string; model: string }> }>;
   ollamaChat: (baseUrl: string, body: unknown) => Promise<unknown>;
 }

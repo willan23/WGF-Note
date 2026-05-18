@@ -8,6 +8,7 @@ const path = require('node:path');
 const { fileURLToPath, pathToFileURL } = require('node:url');
 
 let mainWindow = null;
+const windows = new Set();
 let apiProcess = null;
 let apiBaseUrl = process.env.NOTE_PY_API_BASE_URL || 'http://127.0.0.1:3000';
 let frontendServer = null;
@@ -182,8 +183,13 @@ async function getPathInfo(uriOrPath) {
 }
 
 function registerDesktopIpcHandlers() {
-  ipcMain.handle('desktop:pick-files', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+  const getRequestWindow = (event) =>
+    BrowserWindow.fromWebContents(event.sender) ??
+    BrowserWindow.getFocusedWindow() ??
+    mainWindow;
+
+  ipcMain.handle('desktop:pick-files', async (event) => {
+    const result = await dialog.showOpenDialog(getRequestWindow(event), {
       title: 'Abrir ficheiros',
       properties: ['openFile', 'multiSelections'],
     });
@@ -195,8 +201,8 @@ function registerDesktopIpcHandlers() {
     return Promise.all(result.filePaths.map((filePath) => getPathInfo(filePath)));
   });
 
-  ipcMain.handle('desktop:pick-directory', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle('desktop:pick-directory', async (event) => {
+    const result = await dialog.showOpenDialog(getRequestWindow(event), {
       title: 'Abrir pasta de projeto',
       properties: ['openDirectory', 'createDirectory'],
     });
@@ -286,6 +292,10 @@ function registerDesktopIpcHandlers() {
     }
   });
 
+  ipcMain.handle('desktop:new-window', async () => {
+    createWindow();
+  });
+
   ipcMain.handle('desktop:ollama-list-models', async (_event, baseUrl) => {
     const normalizedBaseUrl = String(baseUrl || '').replace(/\/+$/, '');
     const response = await fetch(`${normalizedBaseUrl}/api/tags`);
@@ -312,7 +322,7 @@ function registerDesktopIpcHandlers() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     title: 'WGF Note',
     width: 1280,
     height: 840,
@@ -326,7 +336,20 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(frontendBaseUrl);
+  windows.add(window);
+  if (!mainWindow) {
+    mainWindow = window;
+  }
+
+  window.on('closed', () => {
+    windows.delete(window);
+    if (mainWindow === window) {
+      mainWindow = [...windows][0] ?? null;
+    }
+  });
+
+  window.loadURL(frontendBaseUrl);
+  return window;
 }
 
 app.whenReady().then(async () => {
@@ -337,7 +360,7 @@ app.whenReady().then(async () => {
   createWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (windows.size === 0) {
       createWindow();
     }
   });

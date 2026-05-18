@@ -13,12 +13,20 @@ import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
 import { listFiles, openFile } from '@/lib/file-system-manager';
 import {
+  planWorkspaceReplacement,
   searchWorkspace,
+  summarizeWorkspaceReplacementPlan,
+  type WorkspaceReplacementPlanItem,
   type WorkspaceSearchResult,
 } from '@/lib/workspace-search';
 
 type WorkspaceSearchPanelProps = {
-  onAdvancedSearch?: () => void;
+  onAdvancedSearch?: (seed: {
+    query: string;
+    replacement: string;
+    caseSensitive: boolean;
+    wholeWord: boolean;
+  }) => void;
 };
 
 type SearchGroup = {
@@ -108,6 +116,33 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       alignItems: 'center',
       gap: 6,
     },
+    replaceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    replaceButton: {
+      minHeight: 32,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
+    replaceButtonDisabled: {
+      opacity: 0.45,
+    },
+    replaceButtonText: {
+      color: colors.background,
+      fontSize: 11,
+      fontWeight: '800',
+    },
+    replaceInput: {
+      flex: 1,
+      color: colors.foreground,
+      fontSize: 12,
+      paddingVertical: 9,
+    },
     filterButton: {
       minWidth: 26,
       minHeight: 24,
@@ -144,6 +179,49 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.primary,
       fontSize: 11,
       fontWeight: '700',
+    },
+    planBanner: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      padding: 10,
+      gap: 8,
+    },
+    planTitle: {
+      color: colors.foreground,
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    planText: {
+      color: colors.muted,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    planActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    planAction: {
+      flex: 1,
+      minHeight: 30,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    planActionPrimary: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
+    planActionText: {
+      color: colors.foreground,
+      fontSize: 11,
+      fontWeight: '800',
+    },
+    planActionTextPrimary: {
+      color: colors.background,
     },
     list: {
       paddingVertical: 6,
@@ -218,6 +296,7 @@ export function WorkspaceSearchPanel({
   const {
     state,
     openFileFromSystemAtRange,
+    applyWorkspaceReplacementPlan,
     workspaceRootUri: rootDirectoryUri,
   } = useEditor();
   const [query, setQuery] = useState('');
@@ -225,6 +304,12 @@ export function WorkspaceSearchPanel({
   const [isSearching, setIsSearching] = useState(false);
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
+  const [showReplace, setShowReplace] = useState(false);
+  const [replacement, setReplacement] = useState('');
+  const [pendingPlan, setPendingPlan] = useState<WorkspaceReplacementPlanItem[] | null>(null);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   const openFileContentByPath = useMemo(
     () =>
@@ -279,7 +364,18 @@ export function WorkspaceSearchPanel({
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [caseSensitive, openFileContentByPath, query, rootDirectoryUri, wholeWord]);
+  }, [
+    caseSensitive,
+    openFileContentByPath,
+    query,
+    refreshToken,
+    rootDirectoryUri,
+    wholeWord,
+  ]);
+
+  useEffect(() => {
+    setPendingPlan(null);
+  }, [caseSensitive, query, replacement, wholeWord]);
 
   const groupedResults = useMemo<SearchGroup[]>(() => {
     const groups = new Map<string, SearchGroup>();
@@ -311,6 +407,58 @@ export function WorkspaceSearchPanel({
     },
     [openFileFromSystemAtRange],
   );
+
+  const replacementSummary = useMemo(
+    () => (pendingPlan ? summarizeWorkspaceReplacementPlan(pendingPlan) : null),
+    [pendingPlan],
+  );
+
+  const handlePrepareReplacement = useCallback(async () => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+
+    setIsPlanning(true);
+    try {
+      const plan = await planWorkspaceReplacement(
+        rootDirectoryUri,
+        trimmedQuery,
+        replacement,
+        { caseSensitive, wholeWord },
+        {
+          listFiles,
+          readFile: async (path) => openFileContentByPath.get(path) ?? openFile(path),
+        },
+      );
+      setPendingPlan(plan);
+    } catch (error) {
+      console.error('Erro ao preparar substituição lateral:', error);
+      setPendingPlan([]);
+    } finally {
+      setIsPlanning(false);
+    }
+  }, [
+    caseSensitive,
+    openFileContentByPath,
+    query,
+    replacement,
+    rootDirectoryUri,
+    wholeWord,
+  ]);
+
+  const handleApplyReplacement = useCallback(async () => {
+    if (!pendingPlan || pendingPlan.length === 0) return;
+
+    setIsApplying(true);
+    try {
+      await applyWorkspaceReplacementPlan(pendingPlan);
+      setPendingPlan(null);
+      setRefreshToken((value) => value + 1);
+    } catch (error) {
+      console.error('Erro ao aplicar substituição lateral:', error);
+    } finally {
+      setIsApplying(false);
+    }
+  }, [applyWorkspaceReplacementPlan, pendingPlan]);
 
   return (
     <View style={styles.container}>
@@ -377,19 +525,116 @@ export function WorkspaceSearchPanel({
                 .w
               </Text>
             </Pressable>
-            {onAdvancedSearch ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Abrir pesquisa avançada"
-                style={styles.advancedButton}
-                onPress={onAdvancedSearch}
-              >
-                <Ionicons name="options-outline" size={14} color={colors.primary} />
-                <Text style={styles.advancedText}>Substituir</Text>
-              </Pressable>
-            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Alternar substituição lateral"
+              accessibilityState={{ selected: showReplace }}
+              style={styles.advancedButton}
+              onPress={() => setShowReplace((value) => !value)}
+            >
+              <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+              <Text style={styles.advancedText}>Substituir</Text>
+            </Pressable>
           </View>
         </View>
+
+        {showReplace ? (
+          <>
+            <View style={styles.inputWrap}>
+              <Ionicons name="create-outline" size={15} color={colors.muted} />
+              <TextInput
+                accessibilityLabel="Substituir por"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="Substituir por…"
+                placeholderTextColor={colors.muted}
+                value={replacement}
+                onChangeText={setReplacement}
+                style={styles.replaceInput}
+              />
+            </View>
+            <View style={styles.replaceRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Preparar substituição"
+                disabled={!query.trim() || isPlanning}
+                onPress={() => void handlePrepareReplacement()}
+                style={[
+                  styles.replaceButton,
+                  (!query.trim() || isPlanning) && styles.replaceButtonDisabled,
+                ]}
+              >
+                <Text style={styles.replaceButtonText}>
+                  {isPlanning ? 'A preparar…' : 'Preparar'}
+                </Text>
+              </Pressable>
+              {onAdvancedSearch ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Abrir revisão avançada"
+                  style={styles.advancedButton}
+                  onPress={() =>
+                    onAdvancedSearch({
+                      query,
+                      replacement,
+                      caseSensitive,
+                      wholeWord,
+                    })
+                  }
+                >
+                  <Ionicons name="options-outline" size={14} color={colors.primary} />
+                  <Text style={styles.advancedText}>Rever</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </>
+        ) : null}
+
+        {replacementSummary ? (
+          <View style={styles.planBanner}>
+            <Text style={styles.planTitle}>Plano pronto</Text>
+            <Text style={styles.planText}>
+              {replacementSummary.replacementCount} troca
+              {replacementSummary.replacementCount !== 1 ? 's' : ''} em{' '}
+              {replacementSummary.fileCount} ficheiro
+              {replacementSummary.fileCount !== 1 ? 's' : ''}.
+            </Text>
+            <View style={styles.planActions}>
+              {onAdvancedSearch ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Rever substituições"
+                  onPress={() =>
+                    onAdvancedSearch({
+                      query,
+                      replacement,
+                      caseSensitive,
+                      wholeWord,
+                    })
+                  }
+                  style={styles.planAction}
+                >
+                  <Text style={styles.planActionText}>Rever</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Aplicar todas as substituições"
+                disabled={pendingPlan?.length === 0 || isApplying}
+                onPress={() => void handleApplyReplacement()}
+                style={[
+                  styles.planAction,
+                  styles.planActionPrimary,
+                  (pendingPlan?.length === 0 || isApplying) && styles.replaceButtonDisabled,
+                ]}
+              >
+                <Text style={[styles.planActionText, styles.planActionTextPrimary]}>
+                  {isApplying ? 'A aplicar…' : 'Aplicar tudo'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </View>
 
       {isSearching ? (

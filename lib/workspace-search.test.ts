@@ -3,6 +3,7 @@ import {
   getWorkspaceRelativePath,
   getWorkspaceReplacementChangeId,
   isSearchableWorkspaceFile,
+  listWorkspaceFiles,
   planWorkspaceReplacement,
   searchWorkspace,
   selectWorkspaceReplacementChanges,
@@ -98,6 +99,36 @@ describe('workspace-search', () => {
     );
 
     expect(results).toHaveLength(1);
+  });
+
+  it('lista ficheiros pesquisáveis para quick open', async () => {
+    const tree: Record<string, FileInfo[]> = {
+      'file:///projects': [
+        folder('file:///projects/app', 'app'),
+        file('file:///projects/logo.png', 'logo.png'),
+      ],
+      'file:///projects/app': [
+        file('file:///projects/app/main.py', 'main.py'),
+        file('file:///projects/app/readme.md', 'readme.md'),
+      ],
+    };
+
+    await expect(
+      listWorkspaceFiles('file:///projects', {
+        listFiles: async (directoryUri) => tree[directoryUri] ?? [],
+      }),
+    ).resolves.toEqual([
+      {
+        path: 'file:///projects/app/main.py',
+        name: 'main.py',
+        relativePath: 'app/main.py',
+      },
+      {
+        path: 'file:///projects/app/readme.md',
+        name: 'readme.md',
+        relativePath: 'app/readme.md',
+      },
+    ]);
   });
 
   it('planeia substituições por ficheiro sem tocar em no-ops', async () => {

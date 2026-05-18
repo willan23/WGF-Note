@@ -5,6 +5,10 @@ export type EditorAction =
   | { type: 'OPEN_FILE'; payload: PythonFile }
   | { type: 'CLOSE_FILE'; payload: string }
   | {
+      type: 'REORDER_OPEN_FILES';
+      payload: { fileId: string; targetFileId: string };
+    }
+  | {
       type: 'RENAME_PATH';
       payload: { oldPath: string; newPath: string; isDirectory: boolean };
     }
@@ -243,6 +247,31 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         openFiles: remaining,
         ...nextViewState,
         viewStateByFileId,
+      };
+    }
+    case 'REORDER_OPEN_FILES': {
+      const sourceIndex = state.openFiles.findIndex(
+        (file) => file.id === action.payload.fileId,
+      );
+      const targetIndex = state.openFiles.findIndex(
+        (file) => file.id === action.payload.targetFileId,
+      );
+
+      if (
+        sourceIndex === -1 ||
+        targetIndex === -1 ||
+        sourceIndex === targetIndex
+      ) {
+        return state;
+      }
+
+      const openFiles = [...state.openFiles];
+      const [movedFile] = openFiles.splice(sourceIndex, 1);
+      openFiles.splice(targetIndex, 0, movedFile);
+
+      return {
+        ...state,
+        openFiles,
       };
     }
     case 'RENAME_PATH': {

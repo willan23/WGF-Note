@@ -104,6 +104,27 @@ describe('editor-state', () => {
     expect(restored.cursorLine).toBe(4);
   });
 
+  it('reordena abas abertas sem perder a aba ativa', () => {
+    const first = createDraftFile('primeiro.py');
+    const second = createDraftFile('segundo.py');
+    const third = createDraftFile('terceiro.py');
+
+    let state = editorReducer(initialEditorState, { type: 'OPEN_FILE', payload: first });
+    state = editorReducer(state, { type: 'OPEN_FILE', payload: second });
+    state = editorReducer(state, { type: 'OPEN_FILE', payload: third });
+    state = editorReducer(state, {
+      type: 'REORDER_OPEN_FILES',
+      payload: { fileId: third.id, targetFileId: first.id },
+    });
+
+    expect(state.openFiles.map((file) => file.name)).toEqual([
+      'terceiro.py',
+      'primeiro.py',
+      'segundo.py',
+    ]);
+    expect(state.currentFile?.id).toBe(third.id);
+  });
+
   it('mantém a aba e atualiza o caminho quando um ficheiro aberto é renomeado', () => {
     const persisted = createPersistedFile('file:///projects/app.py', 'print("olá")');
     const opened = editorReducer(initialEditorState, { type: 'OPEN_FILE', payload: persisted });

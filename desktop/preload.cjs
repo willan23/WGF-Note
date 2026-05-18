@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('__NOTE_PY_DESKTOP__', {
     ipcRenderer.invoke('desktop:move-path', { sourceUri, destinationUri }),
   exists: (uri) => ipcRenderer.invoke('desktop:exists', uri),
   statPath: (uri) => ipcRenderer.invoke('desktop:stat-path', uri),
+  openNewWindow: () => ipcRenderer.invoke('desktop:new-window'),
   listOllamaModels: (baseUrl) => ipcRenderer.invoke('desktop:ollama-list-models', baseUrl),
   ollamaChat: (baseUrl, body) => ipcRenderer.invoke('desktop:ollama-chat', { baseUrl, body }),
 });

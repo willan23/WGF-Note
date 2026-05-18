@@ -2,11 +2,11 @@
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, agora focado exclusivamente em desktop.
 
-**Versão atual:** `1.0.2` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
+**Versão atual:** `1.0.3` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
 
 ## Estado atual
 
-- **Pronto no núcleo:** edição multi-linguagem, bancada desktop com paleta de comandos, breadcrumbs e atalhos visíveis, gestão local de ficheiros, árvore de projeto com criação/renomeação/eliminação, pesquisa e substituição globais no workspace com pré-visualização, seleção por ficheiro/linha e inspeção direta no editor, IA local via Ollama com chat contextual, explicações e propostas de alteração revisáveis, execução Python real por backend autenticado, sync cloud manual do workspace, partilha de ficheiros com papéis de leitor/editor, restauração de sessão, syntax highlighting básico, templates, sugestões, preview HTML/CSS e preferências locais.
+- **Pronto no núcleo:** edição multi-linguagem, bancada desktop com paleta de comandos, quick open (`Ctrl+P`), abas reordenáveis, multi-janela, breadcrumbs e atalhos visíveis, gestão local de ficheiros, árvore de projeto com criação/renomeação/eliminação, pesquisa e substituição globais no workspace com pré-visualização, seleção por ficheiro/linha e inspeção direta no editor, IA local via Ollama com chat contextual, explicações e propostas de alteração revisáveis, execução Python real por backend autenticado, sync cloud manual do workspace, partilha de ficheiros com papéis de leitor/editor, restauração de sessão, syntax highlighting básico, templates, sugestões, preview HTML/CSS e preferências locais.
 - **Ainda fora da experiência principal:** colaboração em tempo real caractere-a-caractere, resolução visual avançada de conflitos e publicação pronta de infraestrutura. A base funcional já existe, mas estas camadas ainda pedem hardening antes de serem tratadas como produto final.
 - **Critério de qualidade da sprint atual:** `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm build:web` e `pnpm desktop:make` precisam passar antes de considerar o app estável.
 
@@ -28,6 +28,16 @@ O assistente de código funciona contra um servidor Ollama configurado pelo util
 - **Chat:** usa o ficheiro atual, a seleção, os ficheiros abertos, um mapa leve do workspace, alguns trechos recuperados localmente por pergunta e memória local por workspace; pode devolver referências navegáveis e transformar uma sugestão numa proposta revisável. Ficheiros muito grandes são truncados de forma explícita antes de irem para o modelo local, para preservar resposta e desempenho.
 - **Ações:** explica código ou propõe uma substituição revisável para a seleção atual.
 - **Memória:** permite ver, criar, editar e apagar notas locais do workspace que devam sobreviver entre sessões; sugestões novas da IA só entram depois da tua aprovação e podem guardar evidências navegáveis para explicar porque cada facto ficou na memória. O app revalida essas evidências, distingue notas confirmadas/parciais/manuais/desatualizadas e exclui do contexto do chat o que ficou sem base válida.
+
+### Integração futura com Hermes/Omega
+
+O projeto `W:\hermes-agent-main` não deve ser colado diretamente dentro do WGF Note. A arquitetura mais segura é:
+
+- **WGF Note:** bancada visual desktop, editor, ficheiros, abas, pesquisa, UX e empacotamento.
+- **Hermes/Omega:** motor externo de agente, ferramentas, memória profunda, automações e execução por gateway/API.
+- **Ponte recomendada:** iniciar o Hermes no WSL2 ou noutro ambiente suportado e conectar o WGF Note a ele por API OpenAI-compatible (`/v1/chat/completions`, `/v1/responses` ou `/v1/runs`) ou ACP, mantendo os dois projetos atualizáveis separadamente.
+
+Isto permite uma união real de produto sem transformar a app num monólito frágil. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a primeira integração deve ser sidecar/serviço, não importação direta de código Python.
 
 ## Direção do produto
 
@@ -74,3 +84,11 @@ pnpm desktop:make
 ```
 
 `desktop:make` gera um instalador Windows em `release/`. A app desktop abre a exportação web, inicia o backend local empacotado, expõe acesso real ao filesystem do PC e escolhe automaticamente uma porta livre a partir de `3000`.
+
+Atalhos principais no desktop:
+
+- `Ctrl+P`: ir para ficheiro no workspace.
+- `Ctrl+Shift+P`: paleta de comandos.
+- `Ctrl+Shift+F`: pesquisa lateral no projeto.
+- `Ctrl+J`: terminal.
+- `Ctrl+Shift+N`: nova janela.

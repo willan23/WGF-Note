@@ -2,6 +2,21 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.3] - 2026-05-18
+
+### Adicionado
+
+- Quick open real do workspace em `Ctrl+P`, com filtragem por nome/caminho e abertura direta no editor.
+- Abas reordenáveis por drag-and-drop no desktop.
+- Suporte a múltiplas janelas Electron via `Ctrl+Shift+N` e paleta de comandos.
+- Substituição lateral no workspace com preparação de plano, aplicação direta e ponte para revisão avançada já preenchida.
+- Nota arquitetural para unir WGF Note com Hermes/Omega como motor externo via API/ACP, sem misturar os repositórios.
+
+### Corrigido
+
+- A reordenação das abas passou a usar o payload real do drag, evitando falhas quando o drop acontece antes do estado React atualizar.
+- A ação de nova janela fica visível apenas em runtime desktop.
+
 ## [1.0.2] - 2026-05-18
 
 ### Adicionado

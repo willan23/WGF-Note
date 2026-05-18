@@ -22,6 +22,7 @@ import {
   CommandPalette,
   type CommandPaletteItem,
 } from "@/components/command-palette";
+import { QuickOpenModal } from "@/components/quick-open-modal";
 import {
   WorkbenchBottomPanel,
   type WorkbenchBottomPanelTab,
@@ -47,8 +48,15 @@ import {
   getShortcutByAction,
   type ShortcutAction,
 } from "@/lib/keyboard-shortcuts";
+import { getDesktopBridge } from "@/lib/desktop-bridge";
 
 type SidebarMode = 'explorer' | 'search';
+type ProjectSearchSeed = {
+  query: string;
+  replacement: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+};
 
 function getShortcutLabel(action: ShortcutAction): string | undefined {
   const shortcut = getShortcutByAction(action);
@@ -79,7 +87,9 @@ function EditorScreenContent() {
   const [syntaxErrors, setSyntaxErrors] = useState<SyntaxError[]>([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showProjectSearchModal, setShowProjectSearchModal] = useState(false);
+  const [projectSearchSeed, setProjectSearchSeed] = useState<ProjectSearchSeed | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showQuickOpen, setShowQuickOpen] = useState(false);
   const [showLocalAIModal, setShowLocalAIModal] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -100,7 +110,7 @@ function EditorScreenContent() {
     openFile(newFile);
   }, [createNewFile, openFile, currentLanguage]);
 
-  const handleOpen = useCallback(async () => {
+  const handleOpenFromSystem = useCallback(async () => {
     if (isDesktopRuntime()) {
       const files = await pickFilesFromSystem();
       await Promise.all(files.filter((file) => !file.isDirectory).map((file) => openFileFromSystem(file.uri)));
@@ -109,6 +119,10 @@ function EditorScreenContent() {
 
     setShowFileManager(true);
   }, [openFileFromSystem]);
+
+  const handleQuickOpen = useCallback(() => {
+    setShowQuickOpen(true);
+  }, []);
 
   const handleSave = useCallback(async () => {
     try {
@@ -134,8 +148,14 @@ function EditorScreenContent() {
       return;
     }
 
+    setProjectSearchSeed(null);
     setShowProjectSearchModal(true);
   }, [width]);
+
+  const handleReviewWorkspaceSearch = useCallback((seed: ProjectSearchSeed) => {
+    setProjectSearchSeed(seed);
+    setShowProjectSearchModal(true);
+  }, []);
 
   const handleToggleWorkspace = useCallback(() => {
     if (width >= 980) {
@@ -155,6 +175,10 @@ function EditorScreenContent() {
 
   const handleToggleProblems = useCallback(() => {
     setActiveBottomPanel((current) => (current === 'problems' ? null : 'problems'));
+  }, []);
+
+  const handleOpenNewWindow = useCallback(() => {
+    void getDesktopBridge()?.openNewWindow();
   }, []);
 
   useEffect(() => {
@@ -219,11 +243,18 @@ function EditorScreenContent() {
       },
       {
         id: 'open',
-        label: 'Abrir ficheiro',
-        description: 'Escolhe um ficheiro do computador',
+        label: 'Ir para ficheiro',
+        description: 'Procura no workspace atual',
         shortcut: getShortcutLabel('open'),
+        icon: 'document-text-outline',
+        onSelect: handleQuickOpen,
+      },
+      {
+        id: 'open-system',
+        label: 'Abrir do computador',
+        description: 'Escolhe um ficheiro fora do workspace',
         icon: 'folder-open-outline',
-        onSelect: () => void handleOpen(),
+        onSelect: () => void handleOpenFromSystem(),
       },
       {
         id: 'save',
@@ -302,13 +333,26 @@ function EditorScreenContent() {
       });
     }
 
+    if (isDesktopRuntime()) {
+      items.splice(items.length - 1, 0, {
+        id: 'new-window',
+        label: 'Nova janela',
+        description: 'Abre outra bancada WGF Note',
+        shortcut: getShortcutLabel('newWindow'),
+        icon: 'copy-outline',
+        onSelect: handleOpenNewWindow,
+      });
+    }
+
     return items;
   }, [
     currentLanguageFeatures.supportsPreview,
     handleFormat,
     handleNew,
-    handleOpen,
+    handleOpenFromSystem,
+    handleOpenNewWindow,
     handleProjectSearch,
+    handleQuickOpen,
     handleSave,
     handleToggleTerminal,
     handleToggleWorkspace,
@@ -382,7 +426,7 @@ function EditorScreenContent() {
   useKeyboardShortcuts({
     onSave: () => void handleSave(),
     onFormat: handleFormat,
-    onOpen: () => void handleOpen(),
+    onOpen: handleQuickOpen,
     onNew: handleNew,
     onUndo: canUndo ? undo : undefined,
     onRedo: canRedo ? redo : undefined,
@@ -392,6 +436,7 @@ function EditorScreenContent() {
     onProjectSearch: handleProjectSearch,
     onCommandPalette: () => setShowCommandPalette(true),
     onTerminal: handleToggleTerminal,
+    onNewWindow: isDesktopRuntime() ? handleOpenNewWindow : undefined,
     onSettings: () => router.push('/(tabs)/settings'),
   });
 
@@ -430,7 +475,7 @@ function EditorScreenContent() {
       {/* Editor Toolbar at the top */}
       <EditorToolbar
         onNew={handleNew}
-        onOpen={handleOpen}
+        onOpen={handleOpenFromSystem}
         onSave={handleSave}
         onUndo={canUndo ? undo : undefined}
         onRedo={canRedo ? redo : undefined}
@@ -459,7 +504,7 @@ function EditorScreenContent() {
               <WorkspaceExplorer />
             ) : (
               <WorkspaceSearchPanel
-                onAdvancedSearch={() => setShowProjectSearchModal(true)}
+                onAdvancedSearch={handleReviewWorkspaceSearch}
               />
             )}
           </View>
@@ -518,12 +563,23 @@ function EditorScreenContent() {
       />
       <ProjectSearchModal
         visible={showProjectSearchModal}
-        onClose={() => setShowProjectSearchModal(false)}
+        onClose={() => {
+          setShowProjectSearchModal(false);
+          setProjectSearchSeed(null);
+        }}
+        initialQuery={projectSearchSeed?.query}
+        initialReplacement={projectSearchSeed?.replacement}
+        initialCaseSensitive={projectSearchSeed?.caseSensitive}
+        initialWholeWord={projectSearchSeed?.wholeWord}
       />
       <CommandPalette
         visible={showCommandPalette}
         commands={commandPaletteItems}
         onClose={() => setShowCommandPalette(false)}
+      />
+      <QuickOpenModal
+        visible={showQuickOpen}
+        onClose={() => setShowQuickOpen(false)}
       />
       <LocalAIModal
         visible={showLocalAIModal}

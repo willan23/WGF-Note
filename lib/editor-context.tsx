@@ -35,6 +35,7 @@ interface EditorContextType {
   setCurrentLanguage: (language: CodeLanguage) => void;
   openFile: (file: PythonFile) => void;
   closeFile: (fileId: string) => void;
+  reorderOpenFiles: (fileId: string, targetFileId: string) => void;
   updateFileContent: (fileId: string, content: string) => void;
   createNewFile: (name: string, language?: CodeLanguage) => PythonFile;
   saveCurrentFile: () => Promise<void>;
@@ -672,6 +673,13 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     setWorkspaceRootUriState(uri);
   }, []);
 
+  const reorderOpenFiles = useCallback((fileId: string, targetFileId: string) => {
+    dispatch({
+      type: 'REORDER_OPEN_FILES',
+      payload: { fileId, targetFileId },
+    });
+  }, []);
+
   const value = useMemo<EditorContextType>(
     () => ({
       state,
@@ -681,6 +689,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       setCurrentLanguage,
       openFile,
       closeFile,
+      reorderOpenFiles,
       updateFileContent,
       createNewFile,
       saveCurrentFile,
@@ -722,6 +731,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       indentSelection,
       nextBookmark,
       openFile,
+      reorderOpenFiles,
       openFileFromSystem,
       openFileFromSystemAtRange,
       applyWorkspaceReplacementPlan,
