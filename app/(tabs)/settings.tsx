@@ -8,12 +8,18 @@ import {
   Switch,
   TextInput,
 } from 'react-native';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
 import { listLocalAIModels } from '@/lib/local-ai';
 import { isDesktopRuntime } from '@/lib/desktop-bridge';
 import type { LocalAIProvider } from '@/lib/types';
+
+type ProviderStatus = {
+  tone: 'success' | 'warning' | 'error';
+  title: string;
+  message: string;
+};
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -167,6 +173,62 @@ export default function SettingsScreen() {
       fontSize: 13,
       fontWeight: '700',
     },
+    statusCard: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      padding: 12,
+      gap: 4,
+    },
+    statusCardSuccess: {
+      borderColor: `${colors.success}66`,
+      backgroundColor: `${colors.success}12`,
+    },
+    statusCardWarning: {
+      borderColor: `${colors.warning}66`,
+      backgroundColor: `${colors.warning}12`,
+    },
+    statusCardError: {
+      borderColor: `${colors.error}66`,
+      backgroundColor: `${colors.error}12`,
+    },
+    statusTitle: {
+      color: colors.foreground,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    statusText: {
+      color: colors.muted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    guideCard: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: `${colors.primary}44`,
+      borderRadius: 12,
+      backgroundColor: `${colors.primary}0f`,
+      padding: 12,
+      gap: 6,
+    },
+    guideTitle: {
+      color: colors.foreground,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    guideText: {
+      color: colors.muted,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    guideCode: {
+      color: colors.foreground,
+      fontSize: 12,
+      fontFamily: 'Menlo',
+      lineHeight: 18,
+    },
     footer: {
       padding: 40,
       alignItems: 'center',
@@ -179,12 +241,17 @@ export default function SettingsScreen() {
     [
       colors.background,
       colors.border,
+      colors.error,
       colors.foreground,
       colors.muted,
       colors.primary,
+      colors.success,
       colors.surface,
+      colors.warning,
     ],
   );
+
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
 
   const handleUpdate = (updates: Partial<typeof settings>) => {
     updateSettings(updates);
@@ -202,6 +269,7 @@ export default function SettingsScreen() {
       localAiModel: provider === 'openai-compatible' ? 'omega-supreme' : '',
       localAiApiKey: '',
     });
+    setProviderStatus(null);
   };
 
   const handleTestLocalAI = async () => {
@@ -215,13 +283,33 @@ export default function SettingsScreen() {
         'Ligação concluída',
         models.length > 0
           ? `Modelos disponíveis: ${models.map((model) => model.name).join(', ')}`
-          : 'O Ollama respondeu, mas ainda não há modelos instalados.',
+          : 'O servidor respondeu, mas ainda não há modelos anunciados.',
       );
+      setProviderStatus({
+        tone: models.length > 0 ? 'success' : 'warning',
+        title: models.length > 0 ? 'Ligação saudável' : 'Servidor sem modelos',
+        message:
+          models.length > 0
+            ? `Modelos encontrados: ${models.map((model) => model.name).join(', ')}`
+            : settings.localAiProvider === 'openai-compatible'
+              ? 'A API respondeu, mas /v1/models não devolveu modelos. Confirme API_SERVER_MODEL_NAME ou a configuração do gateway.'
+              : 'O Ollama respondeu, mas ainda não há modelos instalados.',
+      });
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível contactar a IA local.';
       Alert.alert(
         'Ligação falhou',
-        error instanceof Error ? error.message : 'Não foi possível contactar a IA local.',
+        message,
       );
+      setProviderStatus({
+        tone: 'error',
+        title: 'Ligação falhou',
+        message:
+          settings.localAiProvider === 'openai-compatible'
+            ? `${message} Para Hermes/Omega, confirme WSL2, API_SERVER_ENABLED=true e porta 8642.`
+            : `${message} Confirme se o Ollama está aberto e acessível.`,
+      });
     }
   };
 
@@ -245,6 +333,14 @@ export default function SettingsScreen() {
             ? 'A API respondeu, mas não anunciou modelos. Confirme se o Hermes/Omega API Server está ativo.'
             : 'O servidor respondeu, mas ainda não há modelos instalados. Instale um modelo coder no Ollama e volte a tentar.',
         );
+        setProviderStatus({
+          tone: 'warning',
+          title: 'Servidor encontrado',
+          message:
+            settings.localAiProvider === 'openai-compatible'
+              ? 'O Hermes/Omega respondeu, mas não anunciou modelos. O chat pode funcionar se o modelo estiver correto.'
+              : 'O Ollama respondeu, mas precisa de um modelo instalado.',
+        });
         handleUpdate({
           localAiEnabled: true,
           localAiProvider: settings.localAiProvider,
@@ -275,13 +371,25 @@ export default function SettingsScreen() {
         'IA local pronta',
         `Configurado ${preferredModel.name}. Já podes conversar e pedir código no editor.`,
       );
+      setProviderStatus({
+        tone: 'success',
+        title: 'IA pronta',
+        message: `Configurado ${preferredModel.name} em ${baseUrl}.`,
+      });
     } catch (error) {
-      Alert.alert(
-        'Não encontrei a IA local',
+      const message =
         error instanceof Error
           ? `${error.message} No PC, confirme se o provedor está aberto em ${baseUrl}.`
-          : 'Não foi possível configurar a IA local automaticamente.',
+          : 'Não foi possível configurar a IA local automaticamente.';
+      Alert.alert(
+        'Não encontrei a IA local',
+        message,
       );
+      setProviderStatus({
+        tone: 'error',
+        title: 'Configuração falhou',
+        message,
+      });
     }
   };
 
@@ -448,6 +556,18 @@ export default function SettingsScreen() {
                 <Text style={styles.providerButtonText}>Hermes/Omega</Text>
               </Pressable>
             </View>
+            {settings.localAiProvider === 'openai-compatible' ? (
+              <View style={styles.guideCard}>
+                <Text style={styles.guideTitle}>Como ligar Hermes/Omega</Text>
+                <Text style={styles.guideText}>
+                  No Windows, execute o Hermes em WSL2 e ative o API Server antes de
+                  testar a ligação no WGF Note.
+                </Text>
+                <Text style={styles.guideCode}>API_SERVER_ENABLED=true</Text>
+                <Text style={styles.guideCode}>API_SERVER_PORT=8642</Text>
+                <Text style={styles.guideCode}>omega gateway start</Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.fieldGroup}>
@@ -518,11 +638,26 @@ export default function SettingsScreen() {
                 <Text style={styles.inlineActionText}>Configurar automaticamente no PC</Text>
               </Pressable>
             ) : null}
+            {providerStatus ? (
+              <View
+                style={[
+                  styles.statusCard,
+                  providerStatus.tone === 'success'
+                    ? styles.statusCardSuccess
+                    : providerStatus.tone === 'warning'
+                      ? styles.statusCardWarning
+                      : styles.statusCardError,
+                ]}
+              >
+                <Text style={styles.statusTitle}>{providerStatus.title}</Text>
+                <Text style={styles.statusText}>{providerStatus.message}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>WGF Note v1.0.4</Text>
+          <Text style={styles.footerText}>WGF Note v1.0.5</Text>
         </View>
       </ScrollView>
     </View>

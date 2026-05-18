@@ -2,6 +2,18 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.5] - 2026-05-18
+
+### Adicionado
+
+- Diagnóstico visual nas definições de IA, com estados de sucesso, aviso e erro.
+- Guia curto no UI para ligar Hermes/Omega via WSL2/API Server.
+- Fallback de chat OpenAI-compatible: respostas textuais cruas agora aparecem no chat em vez de falharem quando o agente não devolve JSON perfeito.
+
+### Corrigido
+
+- Lint das definições com dependências completas de tema.
+
 ## [1.0.4] - 2026-05-18
 
 ### Adicionado

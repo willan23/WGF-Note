@@ -555,6 +555,50 @@ describe('local-ai', () => {
     });
   });
 
+  it('aceita resposta textual crua em chat OpenAI-compatible', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: 'Consigo ajudar com o projeto sem JSON perfeito.',
+              },
+            },
+          ],
+        }),
+      })),
+    );
+
+    await expect(
+      requestLocalAIChat(
+        {
+          provider: 'openai-compatible',
+          baseUrl: 'http://localhost:8642',
+          model: 'omega-supreme',
+        },
+        {
+          language: 'python',
+          fileName: 'main.py',
+          fullContent: '',
+          selectedText: '',
+          openFiles: [],
+          projectSummary: { files: [], omittedFileCount: 0 },
+          retrievedSnippets: [],
+          workspaceMemoryNotes: [],
+        },
+        [{ role: 'user', content: 'olá' }],
+      ),
+    ).resolves.toEqual({
+      answer: 'Consigo ajudar com o projeto sem JSON perfeito.',
+      references: [],
+      editInstruction: '',
+      memoryNotes: [],
+    });
+  });
+
   it('extrai termos úteis para recuperação local', () => {
     expect(extractLocalAIRetrievalTerms('Como funciona a autenticação do utilizador?')).toEqual([
       'funciona',

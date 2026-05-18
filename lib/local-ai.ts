@@ -723,6 +723,15 @@ function sanitizeChatResponse(
   };
 }
 
+function createPlainChatResponse(content: string): LocalAIChatResponse {
+  return {
+    answer: content.trim(),
+    references: [],
+    editInstruction: '',
+    memoryNotes: [],
+  };
+}
+
 export function buildLocalAIChatContextBlock(context: LocalAIChatContext): string {
   return [
     buildContextBlock(context),
@@ -1075,7 +1084,17 @@ export async function requestLocalAIChat(
     ],
     chatResponseSchema,
   );
-  const parsed = parseStructuredContent<LocalAIChatResponse>(content);
+  let parsed: LocalAIChatResponse;
+  try {
+    parsed = parseStructuredContent<LocalAIChatResponse>(content);
+  } catch (error) {
+    if (getLocalAIProvider(config) === 'openai-compatible' && content?.trim()) {
+      return createPlainChatResponse(content);
+    }
+
+    throw error;
+  }
+
   if (!parsed.answer.trim()) {
     throw new Error('A IA local devolveu uma resposta inválida.');
   }
