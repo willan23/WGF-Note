@@ -584,8 +584,10 @@ function EditorScreenContent() {
       <LocalAIModal
         visible={showLocalAIModal}
         enabled={settings.localAiEnabled}
+        provider={settings.localAiProvider}
         baseUrl={settings.localAiBaseUrl}
         model={settings.localAiModel}
+        apiKey={settings.localAiApiKey}
         fileName={state.currentFile?.name ?? 'sem-ficheiro'}
         filePath={state.currentFile?.path ?? null}
         language={currentLanguage}

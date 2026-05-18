@@ -3,8 +3,12 @@ import {
   buildLocalAIChatContextBlock,
   clipLocalAIContextValue,
   extractLocalAIRetrievalTerms,
+  getOpenAICompatibleChatUrl,
+  getOpenAICompatibleModelsUrl,
   getOllamaChatUrl,
   getOllamaTagsUrl,
+  listLocalAIModels,
+  listOpenAICompatibleModels,
   listOllamaModels,
   retrieveRelevantWorkspaceSnippetsForLocalAI,
   requestLocalAIChat,
@@ -24,6 +28,15 @@ describe('local-ai', () => {
     );
     expect(getOllamaTagsUrl('http://localhost:11434/api')).toBe(
       'http://localhost:11434/api/tags',
+    );
+  });
+
+  it('normaliza URLs OpenAI-compatible/Hermes', () => {
+    expect(getOpenAICompatibleChatUrl('http://localhost:8642')).toBe(
+      'http://localhost:8642/v1/chat/completions',
+    );
+    expect(getOpenAICompatibleModelsUrl('http://localhost:8642/v1/')).toBe(
+      'http://localhost:8642/v1/models',
     );
   });
 
@@ -49,6 +62,44 @@ describe('local-ai', () => {
     await expect(listOllamaModels('http://localhost:11434')).resolves.toEqual([
       { name: 'qwen', model: 'qwen' },
     ]);
+  });
+
+  it('lista modelos OpenAI-compatible', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'omega-supreme' }, { id: 'hermes-local' }],
+        }),
+      })),
+    );
+
+    await expect(
+      listOpenAICompatibleModels('http://localhost:8642/v1'),
+    ).resolves.toEqual([
+      { name: 'omega-supreme', model: 'omega-supreme' },
+      { name: 'hermes-local', model: 'hermes-local' },
+    ]);
+  });
+
+  it('lista modelos pelo provedor configurado', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'omega-supreme' }],
+        }),
+      })),
+    );
+
+    await expect(
+      listLocalAIModels({
+        provider: 'openai-compatible',
+        baseUrl: 'http://localhost:8642',
+      }),
+    ).resolves.toEqual([{ name: 'omega-supreme', model: 'omega-supreme' }]);
   });
 
   it('exige endereço antes de listar modelos', async () => {
@@ -85,6 +136,51 @@ describe('local-ai', () => {
       summary: 'Imprime uma mensagem.',
       keyPoints: ['Usa print'],
     });
+  });
+
+  it('pede explicações via API OpenAI-compatible e extrai JSON em markdown', async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        ({
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content:
+                    '```json\n{"summary":"Explica via Hermes.","keyPoints":["Usa chat completions"]}\n```',
+                },
+              },
+            ],
+          }),
+        }) as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      requestLocalAIExplanation(
+        {
+          provider: 'openai-compatible',
+          baseUrl: 'http://localhost:8642',
+          model: 'omega-supreme',
+        },
+        {
+          language: 'python',
+          fileName: 'main.py',
+          fullContent: 'print("olá")',
+          selectedText: '',
+        },
+      ),
+    ).resolves.toEqual({
+      summary: 'Explica via Hermes.',
+      keyPoints: ['Usa chat completions'],
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:8642/v1/chat/completions',
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.response_format).toEqual({ type: 'json_object' });
   });
 
   it('exige instrução para propostas de edição', async () => {

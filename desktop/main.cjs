@@ -163,6 +163,18 @@ function toFileUri(filePath, isDirectory = false) {
   return pathToFileURL(normalizedPath).href;
 }
 
+function normalizeOpenAICompatibleBaseUrl(baseUrl) {
+  const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+  return normalizedBaseUrl.endsWith('/v1')
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/v1`;
+}
+
+function createAIAuthHeaders(apiKey) {
+  const trimmedApiKey = String(apiKey || '').trim();
+  return trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {};
+}
+
 async function ensureProjectsDirectory() {
   const projectsDirectoryPath = path.join(app.getPath('documents'), 'WGF Note', 'projects');
   await fsPromises.mkdir(projectsDirectoryPath, { recursive: true });
@@ -315,6 +327,35 @@ function registerDesktopIpcHandlers() {
 
     if (!response.ok) {
       throw new Error('A IA local não conseguiu responder.');
+    }
+
+    return response.json();
+  });
+
+  ipcMain.handle('desktop:openai-compatible-list-models', async (_event, payload) => {
+    const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(payload.baseUrl);
+    const response = await fetch(`${normalizedBaseUrl}/models`, {
+      headers: createAIAuthHeaders(payload.apiKey),
+    });
+    if (!response.ok) {
+      throw new Error('Não foi possível contactar a API compatível.');
+    }
+    return response.json();
+  });
+
+  ipcMain.handle('desktop:openai-compatible-chat', async (_event, payload) => {
+    const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(payload.baseUrl);
+    const response = await fetch(`${normalizedBaseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...createAIAuthHeaders(payload.apiKey),
+      },
+      body: JSON.stringify(payload.body),
+    });
+
+    if (!response.ok) {
+      throw new Error('A API compatível não conseguiu responder.');
     }
 
     return response.json();

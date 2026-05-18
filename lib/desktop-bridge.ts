@@ -18,6 +18,12 @@ export interface DesktopBridge {
   openNewWindow: () => Promise<void>;
   listOllamaModels: (baseUrl: string) => Promise<{ models?: Array<{ name: string; model: string }> }>;
   ollamaChat: (baseUrl: string, body: unknown) => Promise<unknown>;
+  listOpenAICompatibleModels: (baseUrl: string, apiKey?: string) => Promise<unknown>;
+  openAICompatibleChat: (
+    baseUrl: string,
+    apiKey: string | undefined,
+    body: unknown,
+  ) => Promise<unknown>;
 }
 
 declare global {

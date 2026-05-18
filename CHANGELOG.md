@@ -2,6 +2,20 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.4] - 2026-05-18
+
+### Adicionado
+
+- Provedor **Hermes/Omega** para a IA local via API OpenAI-compatible.
+- Definições de IA com seleção entre **Ollama** e **Hermes/Omega**, endpoint dedicado, modelo e chave API opcional.
+- Ponte Electron para chamadas OpenAI-compatible sem depender de CORS no renderer.
+- Parser mais tolerante para respostas estruturadas da IA, aceitando JSON puro ou blocos markdown `json`.
+
+### Alterado
+
+- O centro de IA passa a receber um objeto de configuração completo de provedor, preparando a evolução para agentes externos sem misturar repositórios.
+- A documentação da união com `W:\hermes-agent-main` foi atualizada para tratar Hermes como sidecar de agente.
+
 ## [1.0.3] - 2026-05-18
 
 ### Adicionado

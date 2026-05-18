@@ -2,7 +2,7 @@
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, agora focado exclusivamente em desktop.
 
-**Versão atual:** `1.0.3` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
+**Versão atual:** `1.0.4` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
 
 ## Estado atual
 
@@ -23,13 +23,18 @@ pnpm desktop:make
 
 ## IA local
 
-O assistente de código funciona contra um servidor Ollama configurado pelo utilizador. No desktop, ele já tenta usar `http://127.0.0.1:11434` e oferece configuração automática de modelo local; no editor, o botão **IA local** abre um centro com:
+O assistente de código funciona contra um provedor local configurado pelo utilizador. Hoje suporta:
+
+- **Ollama:** padrão simples para modelos coder locais em `http://127.0.0.1:11434`.
+- **Hermes/Omega ou outra API OpenAI-compatible:** ideal para usar `W:\hermes-agent-main` como motor externo de agente, normalmente em `http://127.0.0.1:8642`.
+
+No editor, o botão **IA local** abre um centro com:
 
 - **Chat:** usa o ficheiro atual, a seleção, os ficheiros abertos, um mapa leve do workspace, alguns trechos recuperados localmente por pergunta e memória local por workspace; pode devolver referências navegáveis e transformar uma sugestão numa proposta revisável. Ficheiros muito grandes são truncados de forma explícita antes de irem para o modelo local, para preservar resposta e desempenho.
 - **Ações:** explica código ou propõe uma substituição revisável para a seleção atual.
 - **Memória:** permite ver, criar, editar e apagar notas locais do workspace que devam sobreviver entre sessões; sugestões novas da IA só entram depois da tua aprovação e podem guardar evidências navegáveis para explicar porque cada facto ficou na memória. O app revalida essas evidências, distingue notas confirmadas/parciais/manuais/desatualizadas e exclui do contexto do chat o que ficou sem base válida.
 
-### Integração futura com Hermes/Omega
+### Integração com Hermes/Omega
 
 O projeto `W:\hermes-agent-main` não deve ser colado diretamente dentro do WGF Note. A arquitetura mais segura é:
 
@@ -37,7 +42,7 @@ O projeto `W:\hermes-agent-main` não deve ser colado diretamente dentro do WGF 
 - **Hermes/Omega:** motor externo de agente, ferramentas, memória profunda, automações e execução por gateway/API.
 - **Ponte recomendada:** iniciar o Hermes no WSL2 ou noutro ambiente suportado e conectar o WGF Note a ele por API OpenAI-compatible (`/v1/chat/completions`, `/v1/responses` ou `/v1/runs`) ou ACP, mantendo os dois projetos atualizáveis separadamente.
 
-Isto permite uma união real de produto sem transformar a app num monólito frágil. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a primeira integração deve ser sidecar/serviço, não importação direta de código Python.
+Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes/Omega**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
 
 ## Direção do produto
 

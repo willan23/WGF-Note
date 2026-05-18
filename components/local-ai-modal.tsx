@@ -45,18 +45,21 @@ import type {
 } from '@/lib/local-ai';
 import {
   retrieveRelevantWorkspaceSnippetsForLocalAI,
-  listOllamaModels,
+  listLocalAIModels,
   requestLocalAIChat,
   requestLocalAIEditProposal,
   requestLocalAIExplanation,
   summarizeWorkspaceForLocalAI,
 } from '@/lib/local-ai';
+import type { LocalAIProvider } from '@/lib/types';
 
 interface LocalAIModalProps {
   visible: boolean;
   enabled: boolean;
+  provider: LocalAIProvider;
   baseUrl: string;
   model: string;
+  apiKey: string;
   fileName: string;
   filePath: string | null;
   language: CodeLanguage;
@@ -671,8 +674,10 @@ function createStyles(colors: ReturnType<typeof useColors>) {
 export function LocalAIModal({
   visible,
   enabled,
+  provider,
   baseUrl,
   model,
+  apiKey,
   fileName,
   filePath,
   language,
@@ -745,6 +750,10 @@ export function LocalAIModal({
       instruction,
     }),
     [content, fileName, filePath, instruction, language, selectedText],
+  );
+  const aiConfig = useMemo(
+    () => ({ provider, baseUrl, model, apiKey }),
+    [apiKey, baseUrl, model, provider],
   );
   const canUseLocalAI = enabled && Boolean(baseUrl.trim()) && Boolean(model.trim());
   const usableWorkspaceMemoryNotes = useMemo(
@@ -838,7 +847,7 @@ export function LocalAIModal({
     setProposal(null);
     try {
       const nextExplanation = await requestLocalAIExplanation(
-        { baseUrl, model },
+        aiConfig,
         context,
       );
       setExplanation(nextExplanation);
@@ -850,21 +859,32 @@ export function LocalAIModal({
     } finally {
       setIsLoading(false);
     }
-  }, [baseUrl, context, model]);
+  }, [aiConfig, context]);
 
   const handleAutoConfigureLocalAI = useCallback(async () => {
-    const detectedBaseUrl = baseUrl.trim() || 'http://127.0.0.1:11434';
+    const detectedBaseUrl =
+      baseUrl.trim() ||
+      (provider === 'openai-compatible'
+        ? 'http://127.0.0.1:8642'
+        : 'http://127.0.0.1:11434');
 
     try {
-      const models = await listOllamaModels(detectedBaseUrl);
+      const models = await listLocalAIModels({
+        provider,
+        baseUrl: detectedBaseUrl,
+        apiKey,
+      });
       if (models.length === 0) {
         updateSettings({
           localAiEnabled: true,
+          localAiProvider: provider,
           localAiBaseUrl: detectedBaseUrl,
         });
         Alert.alert(
           'IA local',
-          'Encontrei o Ollama, mas ainda não há modelos instalados. Instale um modelo local e volte a tentar.',
+          provider === 'openai-compatible'
+            ? 'A API respondeu, mas não anunciou modelos. Confirme a configuração do Hermes/Omega.'
+            : 'Encontrei o Ollama, mas ainda não há modelos instalados. Instale um modelo local e volte a tentar.',
         );
         return;
       }
@@ -879,6 +899,7 @@ export function LocalAIModal({
 
       updateSettings({
         localAiEnabled: true,
+        localAiProvider: provider,
         localAiBaseUrl: detectedBaseUrl,
         localAiModel: preferredModel.name,
       });
@@ -892,14 +913,14 @@ export function LocalAIModal({
         error instanceof Error ? error.message : 'Não foi possível configurar automaticamente.',
       );
     }
-  }, [baseUrl, updateSettings]);
+  }, [apiKey, baseUrl, provider, updateSettings]);
 
   const handlePropose = useCallback(async () => {
     setIsLoading(true);
     setExplanation(null);
     try {
       const nextProposal = await requestLocalAIEditProposal(
-        { baseUrl, model },
+        aiConfig,
         context,
       );
       setProposal(nextProposal);
@@ -916,7 +937,7 @@ export function LocalAIModal({
     } finally {
       setIsLoading(false);
     }
-  }, [baseUrl, context, model, selectedText, selectionEnd, selectionStart]);
+  }, [aiConfig, context, selectedText, selectionEnd, selectionStart]);
 
   const canPropose = canUseLocalAI && Boolean(instruction.trim());
   const canSendChat = canUseLocalAI && Boolean(chatInput.trim()) && !isChatLoading;
@@ -956,7 +977,7 @@ export function LocalAIModal({
       setIsRetrievingContext(false);
 
       const response = await requestLocalAIChat(
-        { baseUrl, model },
+        aiConfig,
         {
           ...chatContext,
           retrievedSnippets,
@@ -993,12 +1014,11 @@ export function LocalAIModal({
       setIsChatLoading(false);
     }
   }, [
-    baseUrl,
+    aiConfig,
     chatContext,
     chatInput,
     chatMessages,
     filePath,
-    model,
     openFiles,
     rootDirectoryUri,
     workspaceMemory,
@@ -1256,7 +1276,7 @@ export function LocalAIModal({
 
       try {
         const nextProposal = await requestLocalAIEditProposal(
-          { baseUrl, model },
+          aiConfig,
           {
             language,
             fileName,
@@ -1282,12 +1302,11 @@ export function LocalAIModal({
       }
     },
     [
-      baseUrl,
+      aiConfig,
       content,
       fileName,
       filePath,
       language,
-      model,
       selectedText,
       selectionEnd,
       selectionStart,
@@ -1369,7 +1388,8 @@ export function LocalAIModal({
               <View style={styles.disabledCard}>
                 <Text style={styles.disabledTitle}>Configuração necessária</Text>
                 <Text style={styles.helper}>
-                  Ative a IA local nas definições e informe o endereço do Ollama e o modelo instalado.
+                  Ative a IA local nas definições e informe o endereço do provedor
+                  {provider === 'openai-compatible' ? ' Hermes/Omega' : ' Ollama'} e o modelo instalado.
                 </Text>
                 {isDesktopRuntime() ? (
                   <Pressable

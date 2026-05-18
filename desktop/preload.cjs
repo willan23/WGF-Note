@@ -28,4 +28,8 @@ contextBridge.exposeInMainWorld('__NOTE_PY_DESKTOP__', {
   openNewWindow: () => ipcRenderer.invoke('desktop:new-window'),
   listOllamaModels: (baseUrl) => ipcRenderer.invoke('desktop:ollama-list-models', baseUrl),
   ollamaChat: (baseUrl, body) => ipcRenderer.invoke('desktop:ollama-chat', { baseUrl, body }),
+  listOpenAICompatibleModels: (baseUrl, apiKey) =>
+    ipcRenderer.invoke('desktop:openai-compatible-list-models', { baseUrl, apiKey }),
+  openAICompatibleChat: (baseUrl, apiKey, body) =>
+    ipcRenderer.invoke('desktop:openai-compatible-chat', { baseUrl, apiKey, body }),
 });

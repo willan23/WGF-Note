@@ -3,10 +3,13 @@ import type { LocalAIWorkspaceMemoryNote } from './local-ai-memory';
 import { isSearchableWorkspaceFile, getWorkspaceRelativePath } from './workspace-search';
 import { detectLanguageFromExtension, type CodeLanguage } from './types-extended';
 import { getDesktopBridge } from './desktop-bridge';
+import type { LocalAIProvider } from './types';
 
 export interface LocalAIConfig {
+  provider?: LocalAIProvider;
   baseUrl: string;
   model: string;
+  apiKey?: string;
 }
 
 export interface LocalAIContext {
@@ -92,6 +95,11 @@ export interface OllamaModelInfo {
   model: string;
 }
 
+export interface LocalAIModelInfo {
+  name: string;
+  model: string;
+}
+
 interface OllamaChatResponse {
   message?: {
     content?: string;
@@ -100,6 +108,20 @@ interface OllamaChatResponse {
 
 interface OllamaTagsResponse {
   models?: OllamaModelInfo[];
+}
+
+interface OpenAICompatibleModelListResponse {
+  data?: Array<{
+    id?: string;
+  }>;
+}
+
+interface OpenAICompatibleChatResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
 }
 
 export interface LocalAIWorkspaceSummaryDependencies {
@@ -256,12 +278,34 @@ function normalizeBaseUrl(baseUrl: string): string {
   return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed;
 }
 
+function normalizeOpenAICompatibleBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
+}
+
+function getLocalAIProvider(config: Pick<LocalAIConfig, 'provider'>): LocalAIProvider {
+  return config.provider ?? 'ollama';
+}
+
 export function getOllamaChatUrl(baseUrl: string): string {
   return `${normalizeBaseUrl(baseUrl)}/api/chat`;
 }
 
 export function getOllamaTagsUrl(baseUrl: string): string {
   return `${normalizeBaseUrl(baseUrl)}/api/tags`;
+}
+
+export function getOpenAICompatibleChatUrl(baseUrl: string): string {
+  return `${normalizeOpenAICompatibleBaseUrl(baseUrl)}/chat/completions`;
+}
+
+export function getOpenAICompatibleModelsUrl(baseUrl: string): string {
+  return `${normalizeOpenAICompatibleBaseUrl(baseUrl)}/models`;
+}
+
+function getAuthHeaders(apiKey?: string): Record<string, string> {
+  const trimmedApiKey = apiKey?.trim();
+  return trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {};
 }
 
 async function requestOllamaJson<T>(
@@ -298,18 +342,146 @@ async function requestOllamaJson<T>(
   return (await response.json()) as T;
 }
 
+async function requestOpenAICompatibleJson<T>(
+  config: Pick<LocalAIConfig, 'baseUrl' | 'apiKey'>,
+  endpoint: 'models' | 'chat',
+  body?: unknown,
+): Promise<T> {
+  const bridge = getDesktopBridge();
+  if (bridge) {
+    return endpoint === 'models'
+      ? ((await bridge.listOpenAICompatibleModels(
+          config.baseUrl,
+          config.apiKey ?? '',
+        )) as T)
+      : ((await bridge.openAICompatibleChat(
+          config.baseUrl,
+          config.apiKey ?? '',
+          body,
+        )) as T);
+  }
+
+  const response = await fetch(
+    endpoint === 'models'
+      ? getOpenAICompatibleModelsUrl(config.baseUrl)
+      : getOpenAICompatibleChatUrl(config.baseUrl),
+    endpoint === 'models'
+      ? { headers: getAuthHeaders(config.apiKey) }
+      : {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(config.apiKey),
+          },
+          body: JSON.stringify(body),
+        },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      endpoint === 'models'
+        ? 'Não foi possível contactar a API compatível.'
+        : 'A API compatível não conseguiu responder.',
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+async function requestLocalAIChatContent(
+  config: LocalAIConfig,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  schema: unknown,
+): Promise<string | undefined> {
+  const provider = getLocalAIProvider(config);
+
+  if (provider === 'ollama') {
+    const payload = await requestOllamaJson<OllamaChatResponse>(
+      config.baseUrl,
+      'chat',
+      {
+        model: config.model.trim(),
+        stream: false,
+        format: schema,
+        messages,
+      },
+    );
+    return payload.message?.content;
+  }
+
+  const payload = await requestOpenAICompatibleJson<OpenAICompatibleChatResponse>(
+    config,
+    'chat',
+    {
+      model: config.model.trim(),
+      stream: false,
+      response_format: { type: 'json_object' },
+      messages,
+    },
+  );
+
+  return payload.choices?.[0]?.message?.content;
+}
+
 function assertConfigured(config: LocalAIConfig): void {
-  assertBaseUrl(config.baseUrl);
+  assertBaseUrl(config.baseUrl, getLocalAIProvider(config));
 
   if (!config.model.trim()) {
     throw new Error('Defina o modelo local.');
   }
 }
 
-function assertBaseUrl(baseUrl: string): void {
+function assertBaseUrl(baseUrl: string, provider: LocalAIProvider = 'ollama'): void {
   if (!baseUrl.trim()) {
-    throw new Error('Defina o endereço do Ollama.');
+    throw new Error(
+      provider === 'ollama'
+        ? 'Defina o endereço do Ollama.'
+        : 'Defina o endereço da API compatível.',
+    );
   }
+}
+
+function extractJsonObject(content: string): string | null {
+  const fencedMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const source = fencedMatch?.[1]?.trim() ?? content.trim();
+  const firstBrace = source.indexOf('{');
+  if (firstBrace === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = firstBrace; index < source.length; index += 1) {
+    const character = source[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (character === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (character === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(firstBrace, index + 1);
+      }
+    }
+  }
+
+  return null;
 }
 
 function parseStructuredContent<T>(content: string | undefined): T {
@@ -320,7 +492,16 @@ function parseStructuredContent<T>(content: string | undefined): T {
   try {
     return JSON.parse(content) as T;
   } catch {
-    throw new Error('A IA local devolveu uma resposta inválida.');
+    const jsonObject = extractJsonObject(content);
+    if (!jsonObject) {
+      throw new Error('A IA local devolveu uma resposta inválida.');
+    }
+
+    try {
+      return JSON.parse(jsonObject) as T;
+    } catch {
+      throw new Error('A IA local devolveu uma resposta inválida.');
+    }
   }
 }
 
@@ -627,29 +808,52 @@ export async function listOllamaModels(baseUrl: string): Promise<OllamaModelInfo
   return payload.models ?? [];
 }
 
+export async function listOpenAICompatibleModels(
+  baseUrl: string,
+  apiKey = '',
+): Promise<LocalAIModelInfo[]> {
+  assertBaseUrl(baseUrl, 'openai-compatible');
+
+  const payload = await requestOpenAICompatibleJson<OpenAICompatibleModelListResponse>(
+    { baseUrl, apiKey },
+    'models',
+  );
+
+  return (payload.data ?? []).flatMap((model) =>
+    model.id ? [{ name: model.id, model: model.id }] : [],
+  );
+}
+
+export async function listLocalAIModels(
+  config: Pick<LocalAIConfig, 'provider' | 'baseUrl' | 'apiKey'>,
+): Promise<LocalAIModelInfo[]> {
+  return getLocalAIProvider(config) === 'ollama'
+    ? listOllamaModels(config.baseUrl)
+    : listOpenAICompatibleModels(config.baseUrl, config.apiKey);
+}
+
 export async function requestLocalAIExplanation(
   config: LocalAIConfig,
   context: LocalAIContext,
 ): Promise<LocalAIExplanation> {
   assertConfigured(config);
 
-  const payload = await requestOllamaJson<OllamaChatResponse>(config.baseUrl, 'chat', {
-      model: config.model.trim(),
-      stream: false,
-      format: explanationSchema,
-      messages: [
+  const content = await requestLocalAIChatContent(
+    config,
+    [
         {
           role: 'system',
           content:
-            'És um assistente de código conciso. Explica apenas o código recebido e devolve JSON válido segundo o schema.',
+            'És um assistente de código conciso. Explica apenas o código recebido e devolve somente JSON válido segundo o schema pedido.',
         },
         {
           role: 'user',
           content: `${buildContextBlock(context)}\n\nExplica a seleção se existir; caso contrário, resume o ficheiro.`,
         },
-      ],
-  });
-  return parseStructuredContent<LocalAIExplanation>(payload.message?.content);
+    ],
+    explanationSchema,
+  );
+  return parseStructuredContent<LocalAIExplanation>(content);
 }
 
 export async function requestLocalAIEditProposal(
@@ -663,15 +867,13 @@ export async function requestLocalAIEditProposal(
   }
 
   const hasSelection = Boolean(context.selectedText.trim());
-  const payload = await requestOllamaJson<OllamaChatResponse>(config.baseUrl, 'chat', {
-      model: config.model.trim(),
-      stream: false,
-      format: editProposalSchema,
-      messages: [
+  const content = await requestLocalAIChatContent(
+    config,
+    [
         {
           role: 'system',
           content:
-            'És um assistente de programação. Mantém a linguagem e devolve JSON válido segundo o schema. Se existir seleção, replacement deve substituir apenas a seleção. Se não existir seleção, replacement deve ser código pronto para inserir no cursor atual e satisfazer o pedido sem reescrever desnecessariamente o ficheiro inteiro.',
+            'És um assistente de programação. Mantém a linguagem e devolve somente JSON válido segundo o schema pedido. Se existir seleção, replacement deve substituir apenas a seleção. Se não existir seleção, replacement deve ser código pronto para inserir no cursor atual e satisfazer o pedido sem reescrever desnecessariamente o ficheiro inteiro.',
         },
         {
           role: 'user',
@@ -679,9 +881,10 @@ export async function requestLocalAIEditProposal(
             hasSelection ? 'substituir seleção' : 'inserir no cursor'
           }\nPedido: ${context.instruction}`,
         },
-      ],
-  });
-  return parseStructuredContent<LocalAIEditProposal>(payload.message?.content);
+    ],
+    editProposalSchema,
+  );
+  return parseStructuredContent<LocalAIEditProposal>(content);
 }
 
 export async function summarizeWorkspaceForLocalAI(
@@ -856,24 +1059,23 @@ export async function requestLocalAIChat(
 ): Promise<LocalAIChatResponse> {
   assertConfigured(config);
 
-  const payload = await requestOllamaJson<OllamaChatResponse>(config.baseUrl, 'chat', {
-      model: config.model.trim(),
-      stream: false,
-      format: chatResponseSchema,
-      messages: [
+  const content = await requestLocalAIChatContent(
+    config,
+    [
         {
           role: 'system',
           content:
-            'És um assistente de programação local-first. Responde em português claro, usa o contexto recebido, dá prioridade aos trechos recuperados quando forem relevantes, admite incerteza quando faltar informação e nunca afirmes que alteraste ficheiros sem uma confirmação explícita do utilizador. Devolve JSON válido segundo o schema. references só podem usar relativePath presentes no mapa do projeto ou nos trechos recuperados; usa linha/coluna apenas quando estiveres confiante. editInstruction deve ficar vazio quando não houver uma mudança concreta e segura; quando houver pedido de código, pode descrever uma mudança para a seleção atual ou para inserção no cursor se não houver seleção. memoryNotes deve conter apenas factos duráveis e úteis sobre a arquitetura, decisões ou convenções do workspace; cada nota precisa de texto curto e evidências reais em ficheiros quando existirem. Deixa vazio para suposições, detalhes passageiros ou segredos.',
+            'És um assistente de programação local-first. Responde em português claro, usa o contexto recebido, dá prioridade aos trechos recuperados quando forem relevantes, admite incerteza quando faltar informação e nunca afirmes que alteraste ficheiros sem uma confirmação explícita do utilizador. Devolve somente JSON válido segundo o schema pedido. references só podem usar relativePath presentes no mapa do projeto ou nos trechos recuperados; usa linha/coluna apenas quando estiveres confiante. editInstruction deve ficar vazio quando não houver uma mudança concreta e segura; quando houver pedido de código, pode descrever uma mudança para a seleção atual ou para inserção no cursor se não houver seleção. memoryNotes deve conter apenas factos duráveis e úteis sobre a arquitetura, decisões ou convenções do workspace; cada nota precisa de texto curto e evidências reais em ficheiros quando existirem. Deixa vazio para suposições, detalhes passageiros ou segredos.',
         },
         {
           role: 'user',
           content: `Contexto atual:\n${buildLocalAIChatContextBlock(context)}`,
         },
         ...messages.map(({ role, content }) => ({ role, content })),
-      ],
-  });
-  const parsed = parseStructuredContent<LocalAIChatResponse>(payload.message?.content);
+    ],
+    chatResponseSchema,
+  );
+  const parsed = parseStructuredContent<LocalAIChatResponse>(content);
   if (!parsed.answer.trim()) {
     throw new Error('A IA local devolveu uma resposta inválida.');
   }

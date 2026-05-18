@@ -83,8 +83,10 @@ const defaultSettings: AppSettings = {
   showLineNumbers: true,
   showWhitespace: false,
   localAiEnabled: isDesktopRuntime(),
+  localAiProvider: 'ollama',
   localAiBaseUrl: isDesktopRuntime() ? 'http://127.0.0.1:11434' : '',
   localAiModel: '',
+  localAiApiKey: '',
 };
 
 function getHistoryForFile(

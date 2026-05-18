@@ -11,8 +11,9 @@ import {
 import { useMemo } from 'react';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
-import { listOllamaModels } from '@/lib/local-ai';
+import { listLocalAIModels } from '@/lib/local-ai';
 import { isDesktopRuntime } from '@/lib/desktop-bridge';
+import type { LocalAIProvider } from '@/lib/types';
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -142,6 +143,30 @@ export default function SettingsScreen() {
     fieldGroup: {
       paddingVertical: 8,
     },
+    providerRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    providerButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    providerButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: `${colors.primary}16`,
+    },
+    providerButtonText: {
+      color: colors.foreground,
+      fontSize: 13,
+      fontWeight: '700',
+    },
     footer: {
       padding: 40,
       alignItems: 'center',
@@ -165,9 +190,27 @@ export default function SettingsScreen() {
     updateSettings(updates);
   };
 
+  const handleProviderChange = (provider: LocalAIProvider) => {
+    if (provider === settings.localAiProvider) return;
+
+    handleUpdate({
+      localAiProvider: provider,
+      localAiBaseUrl:
+        provider === 'openai-compatible'
+          ? 'http://127.0.0.1:8642'
+          : 'http://127.0.0.1:11434',
+      localAiModel: provider === 'openai-compatible' ? 'omega-supreme' : '',
+      localAiApiKey: '',
+    });
+  };
+
   const handleTestLocalAI = async () => {
     try {
-      const models = await listOllamaModels(settings.localAiBaseUrl);
+      const models = await listLocalAIModels({
+        provider: settings.localAiProvider,
+        baseUrl: settings.localAiBaseUrl,
+        apiKey: settings.localAiApiKey,
+      });
       Alert.alert(
         'Ligação concluída',
         models.length > 0
@@ -183,16 +226,30 @@ export default function SettingsScreen() {
   };
 
   const handleAutoConfigureLocalAI = async () => {
-    const baseUrl = settings.localAiBaseUrl.trim() || 'http://127.0.0.1:11434';
+    const baseUrl =
+      settings.localAiBaseUrl.trim() ||
+      (settings.localAiProvider === 'openai-compatible'
+        ? 'http://127.0.0.1:8642'
+        : 'http://127.0.0.1:11434');
 
     try {
-      const models = await listOllamaModels(baseUrl);
+      const models = await listLocalAIModels({
+        provider: settings.localAiProvider,
+        baseUrl,
+        apiKey: settings.localAiApiKey,
+      });
       if (models.length === 0) {
         Alert.alert(
-          'Ollama encontrado',
-          'O servidor respondeu, mas ainda não há modelos instalados. Instale um modelo coder no Ollama e volte a tentar.',
+          'Servidor encontrado',
+          settings.localAiProvider === 'openai-compatible'
+            ? 'A API respondeu, mas não anunciou modelos. Confirme se o Hermes/Omega API Server está ativo.'
+            : 'O servidor respondeu, mas ainda não há modelos instalados. Instale um modelo coder no Ollama e volte a tentar.',
         );
-        handleUpdate({ localAiEnabled: true, localAiBaseUrl: baseUrl });
+        handleUpdate({
+          localAiEnabled: true,
+          localAiProvider: settings.localAiProvider,
+          localAiBaseUrl: baseUrl,
+        });
         return;
       }
 
@@ -201,11 +258,16 @@ export default function SettingsScreen() {
       );
       const candidateModels = localModels.length > 0 ? localModels : models;
       const preferredModel =
-        candidateModels.find((item) => /coder|code|qwen/i.test(`${item.name} ${item.model}`)) ??
+        candidateModels.find((item) =>
+          settings.localAiProvider === 'openai-compatible'
+            ? /omega|hermes|agent/i.test(`${item.name} ${item.model}`)
+            : /coder|code|qwen/i.test(`${item.name} ${item.model}`),
+        ) ??
         candidateModels[0];
 
       handleUpdate({
         localAiEnabled: true,
+        localAiProvider: settings.localAiProvider,
         localAiBaseUrl: baseUrl,
         localAiModel: preferredModel.name,
       });
@@ -215,9 +277,9 @@ export default function SettingsScreen() {
       );
     } catch (error) {
       Alert.alert(
-        'Não encontrei o Ollama',
+        'Não encontrei a IA local',
         error instanceof Error
-          ? `${error.message} No PC, confirme se o Ollama está aberto em ${baseUrl}.`
+          ? `${error.message} No PC, confirme se o provedor está aberto em ${baseUrl}.`
           : 'Não foi possível configurar a IA local automaticamente.',
       );
     }
@@ -340,13 +402,13 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>IA local</Text>
+          <Text style={styles.sectionTitle}>IA local / agente</Text>
 
           <View style={styles.settingItem}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Ativar IA local</Text>
               <Text style={styles.settingDescription}>
-                Usa um servidor Ollama teu, sem API paga.
+                Usa Ollama local ou Hermes/Omega por API compatível, sem API paga.
               </Text>
             </View>
             <Switch
@@ -357,12 +419,50 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.settingLabel}>Endereço do Ollama</Text>
+            <Text style={styles.settingLabel}>Provedor</Text>
             <Text style={styles.settingDescription}>
-              No desktop, o valor padrão normalmente é http://127.0.0.1:11434.
+              Ollama é simples para modelos locais; Hermes/Omega liga um motor de agente externo.
+            </Text>
+            <View style={styles.providerRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: settings.localAiProvider === 'ollama' }}
+                style={[
+                  styles.providerButton,
+                  settings.localAiProvider === 'ollama' && styles.providerButtonActive,
+                ]}
+                onPress={() => handleProviderChange('ollama')}
+              >
+                <Text style={styles.providerButtonText}>Ollama</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: settings.localAiProvider === 'openai-compatible' }}
+                style={[
+                  styles.providerButton,
+                  settings.localAiProvider === 'openai-compatible' &&
+                    styles.providerButtonActive,
+                ]}
+                onPress={() => handleProviderChange('openai-compatible')}
+              >
+                <Text style={styles.providerButtonText}>Hermes/Omega</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.settingLabel}>
+              {settings.localAiProvider === 'openai-compatible'
+                ? 'Endereço da API compatível'
+                : 'Endereço do Ollama'}
+            </Text>
+            <Text style={styles.settingDescription}>
+              {settings.localAiProvider === 'openai-compatible'
+                ? 'Para Hermes/Omega, o padrão local é http://127.0.0.1:8642.'
+                : 'No desktop, o valor padrão normalmente é http://127.0.0.1:11434.'}
             </Text>
             <TextInput
-              accessibilityLabel="Endereço do Ollama"
+              accessibilityLabel="Endereço da IA local"
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="http://192.168.1.10:11434"
@@ -373,10 +473,32 @@ export default function SettingsScreen() {
             />
           </View>
 
+          {settings.localAiProvider === 'openai-compatible' ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.settingLabel}>Chave API opcional</Text>
+              <Text style={styles.settingDescription}>
+                Só preencha se o Hermes/Omega ou outro servidor exigir Bearer token.
+              </Text>
+              <TextInput
+                accessibilityLabel="Chave API da IA local"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                placeholder="opcional"
+                placeholderTextColor={colors.muted}
+                value={settings.localAiApiKey}
+                onChangeText={(value) => handleUpdate({ localAiApiKey: value })}
+                style={styles.textInput}
+              />
+            </View>
+          ) : null}
+
           <View style={styles.fieldGroup}>
             <Text style={styles.settingLabel}>Modelo</Text>
             <Text style={styles.settingDescription}>
-              Escreva o nome exato do modelo instalado no Ollama.
+              {settings.localAiProvider === 'openai-compatible'
+                ? 'No Hermes/Omega, normalmente é omega-supreme.'
+                : 'Escreva o nome exato do modelo instalado no Ollama.'}
             </Text>
             <TextInput
               accessibilityLabel="Modelo da IA local"
@@ -400,7 +522,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>WGF Note v1.0.3</Text>
+          <Text style={styles.footerText}>WGF Note v1.0.4</Text>
         </View>
       </ScrollView>
     </View>

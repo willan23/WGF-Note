@@ -4,6 +4,8 @@
 
 import type { CodeLanguage } from './types-extended';
 
+export type LocalAIProvider = 'ollama' | 'openai-compatible';
+
 export interface PythonFile {
   id: string;
   name: string;
@@ -49,8 +51,10 @@ export interface AppSettings {
   showLineNumbers: boolean;
   showWhitespace: boolean;
   localAiEnabled: boolean;
+  localAiProvider: LocalAIProvider;
   localAiBaseUrl: string;
   localAiModel: string;
+  localAiApiKey: string;
 }
 
 export interface PythonSymbol {
