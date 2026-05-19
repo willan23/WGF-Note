@@ -2,7 +2,7 @@
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, agora focado exclusivamente em desktop.
 
-**Versão atual:** `1.0.8` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
+**Versão atual:** `1.0.9` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
 
 ## Estado atual
 
@@ -43,7 +43,7 @@ O projeto `W:\hermes-agent-main` não deve ser colado diretamente dentro do WGF 
 - **Hermes/Omega:** motor externo de agente, ferramentas, memória profunda, automações e execução por gateway/API.
 - **Ponte recomendada:** iniciar o Hermes no WSL2 ou noutro ambiente suportado e conectar o WGF Note a ele por API OpenAI-compatible (`/v1/chat/completions`, `/v1/responses` ou `/v1/runs`) ou ACP, mantendo os dois projetos atualizáveis separadamente.
 
-Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes nativo**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. O ecrã de definições mostra diagnóstico de `/health/detailed`, modelos e guia de ligação. O chat aceita respostas agentic em texto cru quando o servidor não devolve JSON perfeito, reconhece blocos de código em Markdown e agora também entende `ideActions` para abrir ficheiros, pesquisar no projeto, mostrar terminal, preparar inserção/substituição e criar ficheiros no workspace. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
+Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes nativo**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. Se `W:\hermes-agent-main` existir, o WGF Note consegue iniciar o gateway em WSL2 pelo botão **Iniciar Hermes/Omega no WSL** e também tenta autoarrancar o sidecar quando a listagem de modelos falha. O ecrã de definições mostra diagnóstico de `/health/detailed`, modelos e guia de ligação. O chat aceita respostas agentic em texto cru quando o servidor não devolve JSON perfeito, reconhece blocos de código em Markdown e agora também entende `ideActions` para abrir ficheiros, pesquisar no projeto, mostrar terminal, preparar inserção/substituição e criar ficheiros no workspace. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
 
 Configuração típica no Hermes/Omega:
 
@@ -51,7 +51,7 @@ Configuração típica no Hermes/Omega:
 API_SERVER_ENABLED=true
 API_SERVER_PORT=8642
 API_SERVER_KEY=opcional_para_sessao
-omega gateway start
+omega gateway run --replace
 ```
 
 ## Direção do produto

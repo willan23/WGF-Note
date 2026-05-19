@@ -16,6 +16,7 @@ import {
   isHermesLocalAIProvider,
   isOpenAICompatibleLocalAIProvider,
   listLocalAIModels,
+  startHermesGateway,
 } from '@/lib/local-ai';
 import { isDesktopRuntime } from '@/lib/desktop-bridge';
 import type { LocalAIProvider } from '@/lib/types';
@@ -163,6 +164,9 @@ export default function SettingsScreen() {
       borderRadius: 999,
       backgroundColor: colors.primary,
     },
+    inlineActionButtonDisabled: {
+      opacity: 0.62,
+    },
     inlineActionText: {
       color: colors.background,
       fontSize: 13,
@@ -276,6 +280,7 @@ export default function SettingsScreen() {
   );
 
   const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
+  const [isStartingHermes, setIsStartingHermes] = useState(false);
 
   const handleUpdate = (updates: Partial<typeof settings>) => {
     updateSettings(updates);
@@ -443,6 +448,65 @@ export default function SettingsScreen() {
         title: 'Configuração falhou',
         message,
       });
+    }
+  };
+
+  const handleStartHermesGateway = async () => {
+    const baseUrl =
+      settings.localAiBaseUrl.trim() || getDefaultLocalAIBaseUrl('hermes');
+
+    setIsStartingHermes(true);
+    setProviderStatus({
+      tone: 'warning',
+      title: 'A iniciar Hermes/Omega',
+      message: 'A abrir WSL2, gateway e API Server local na porta 8642.',
+    });
+
+    try {
+      const result = await startHermesGateway(
+        baseUrl,
+        settings.localAiApiKey,
+        settings.localAiModel.trim() || getDefaultLocalAIModel('hermes'),
+      );
+      const models = await listLocalAIModels({
+        provider: 'hermes',
+        baseUrl,
+        apiKey: settings.localAiApiKey,
+      });
+      const preferredModel =
+        models.find((model) => /omega|hermes|agent/i.test(`${model.name} ${model.model}`)) ??
+        models[0];
+
+      handleUpdate({
+        localAiEnabled: true,
+        localAiProvider: 'hermes',
+        localAiBaseUrl: baseUrl,
+        localAiModel: preferredModel?.name ?? (settings.localAiModel || 'omega-supreme'),
+      });
+
+      const message = [
+        result.message ?? 'Hermes/Omega pronto.',
+        preferredModel ? `Modelo: ${preferredModel.name}.` : 'Modelo padrão: omega-supreme.',
+      ].join(' ');
+      Alert.alert('Hermes/Omega pronto', message);
+      setProviderStatus({
+        tone: 'success',
+        title: 'Hermes/Omega pronto',
+        message,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível iniciar o Hermes/Omega no WSL2.';
+      Alert.alert('Hermes/Omega', message);
+      setProviderStatus({
+        tone: 'error',
+        title: 'Arranque falhou',
+        message,
+      });
+    } finally {
+      setIsStartingHermes(false);
     }
   };
 
@@ -626,14 +690,14 @@ export default function SettingsScreen() {
               <View style={styles.guideCard}>
                 <Text style={styles.guideTitle}>Como ligar Hermes/Omega</Text>
                 <Text style={styles.guideText}>
-                  No Windows, execute o Hermes em WSL2 e ative o API Server antes de
-                  testar a ligação no WGF Note. Com API_SERVER_KEY, o WGF Note também
+                  No Windows, o WGF Note pode iniciar o Hermes em WSL2 automaticamente
+                  quando encontrar W:\hermes-agent-main. Com API_SERVER_KEY, também
                   envia uma sessão estável para continuidade nativa.
                 </Text>
                 <Text style={styles.guideCode}>API_SERVER_ENABLED=true</Text>
                 <Text style={styles.guideCode}>API_SERVER_PORT=8642</Text>
                 <Text style={styles.guideCode}>API_SERVER_KEY=opcional_para_sessao</Text>
-                <Text style={styles.guideCode}>omega gateway start</Text>
+                <Text style={styles.guideCode}>omega gateway run --replace</Text>
               </View>
             ) : null}
           </View>
@@ -710,6 +774,20 @@ export default function SettingsScreen() {
                 <Text style={styles.inlineActionText}>Configurar automaticamente no PC</Text>
               </Pressable>
             ) : null}
+            {isDesktopRuntime() && isHermesLocalAIProvider(settings.localAiProvider) ? (
+              <Pressable
+                disabled={isStartingHermes}
+                style={[
+                  styles.inlineActionButton,
+                  isStartingHermes && styles.inlineActionButtonDisabled,
+                ]}
+                onPress={handleStartHermesGateway}
+              >
+                <Text style={styles.inlineActionText}>
+                  {isStartingHermes ? 'A iniciar Hermes…' : 'Iniciar Hermes/Omega no WSL'}
+                </Text>
+              </Pressable>
+            ) : null}
             {providerStatus ? (
               <View
                 style={[
@@ -729,7 +807,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>WGF Note v1.0.8</Text>
+          <Text style={styles.footerText}>WGF Note v1.0.9</Text>
         </View>
       </ScrollView>
     </View>

@@ -39,4 +39,6 @@ contextBridge.exposeInMainWorld('__NOTE_PY_DESKTOP__', {
     }),
   hermesHealth: (baseUrl, apiKey) =>
     ipcRenderer.invoke('desktop:hermes-health', { baseUrl, apiKey }),
+  startHermesGateway: (baseUrl, apiKey, model) =>
+    ipcRenderer.invoke('desktop:hermes-start', { baseUrl, apiKey, model }),
 });

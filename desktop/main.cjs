@@ -14,6 +14,7 @@ let apiBaseUrl = process.env.NOTE_PY_API_BASE_URL || 'http://127.0.0.1:3000';
 let frontendServer = null;
 let frontendBaseUrl = '';
 let projectsDirectoryUri = '';
+let hermesStartPromise = null;
 
 function getProjectPath(...segments) {
   return path.join(app.getAppPath(), ...segments);
@@ -180,6 +181,204 @@ function normalizeHermesBaseUrl(baseUrl) {
 function createAIAuthHeaders(apiKey) {
   const trimmedApiKey = String(apiKey || '').trim();
   return trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {};
+}
+
+function quoteForBash(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function windowsPathToWslPath(windowsPath) {
+  const resolvedPath = path.resolve(windowsPath);
+  const match = /^([a-zA-Z]):[\\/](.*)$/.exec(resolvedPath);
+  if (!match) return resolvedPath.replace(/\\/g, '/');
+
+  return `/mnt/${match[1].toLowerCase()}/${match[2].replace(/\\/g, '/')}`;
+}
+
+function getHermesRootCandidates() {
+  return [
+    process.env.WGF_NOTE_HERMES_ROOT,
+    process.env.HERMES_AGENT_ROOT,
+    'W:\\hermes-agent-main',
+    path.resolve(app.getAppPath(), '..', '..', 'hermes-agent-main'),
+    path.resolve(app.getPath('documents'), 'hermes-agent-main'),
+  ].filter(Boolean);
+}
+
+async function findHermesRoot() {
+  for (const candidate of getHermesRootCandidates()) {
+    try {
+      await fsPromises.access(path.join(candidate, 'omega'));
+      await fsPromises.access(path.join(candidate, '.venv-wsl', 'bin', 'python'));
+      return candidate;
+    } catch {
+      // Try the next known local install location.
+    }
+  }
+
+  throw new Error(
+    'Não encontrei o Hermes em W:\\hermes-agent-main. Defina WGF_NOTE_HERMES_ROOT com o caminho do hermes-agent-main.',
+  );
+}
+
+function getPortFromBaseUrl(baseUrl) {
+  try {
+    const parsed = new URL(normalizeHermesBaseUrl(baseUrl || 'http://127.0.0.1:8642'));
+    const parsedPort = Number(parsed.port || '8642');
+    return Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65536
+      ? parsedPort
+      : 8642;
+  } catch {
+    return 8642;
+  }
+}
+
+function createTimeoutSignal(timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 2500) {
+  const timeout = createTimeoutSignal(timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: timeout.signal,
+    });
+    return response;
+  } finally {
+    timeout.clear();
+  }
+}
+
+async function readHermesHealth(baseUrl, apiKey) {
+  const normalizedBaseUrl = normalizeHermesBaseUrl(baseUrl || 'http://127.0.0.1:8642');
+  const headers = createAIAuthHeaders(apiKey);
+
+  const detailedResponse = await fetchJsonWithTimeout(
+    `${normalizedBaseUrl}/health/detailed`,
+    { headers },
+  );
+
+  if (detailedResponse.ok) {
+    return detailedResponse.json();
+  }
+
+  const response = await fetchJsonWithTimeout(`${normalizedBaseUrl}/health`, { headers });
+  if (!response.ok) {
+    throw new Error('Não foi possível contactar o health check do Hermes/Omega.');
+  }
+
+  return response.json();
+}
+
+function runProcess(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const { timeoutMs = 15000, ...spawnOptions } = options;
+    const child = spawn(command, args, {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...spawnOptions,
+    });
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`${command} não respondeu a tempo.`));
+    }, timeoutMs);
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+
+      reject(new Error(stderr.trim() || stdout.trim() || `${command} terminou com código ${code}.`));
+    });
+  });
+}
+
+async function waitForHermesApi(baseUrl, apiKey, attempts = 30) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await readHermesHealth(baseUrl, apiKey);
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  throw lastError ?? new Error('Hermes/Omega não ficou pronto a tempo.');
+}
+
+async function startHermesGatewayFromWsl(payload = {}) {
+  const baseUrl = normalizeHermesBaseUrl(payload.baseUrl || 'http://127.0.0.1:8642');
+  const apiKey = payload.apiKey || '';
+  const port = getPortFromBaseUrl(baseUrl);
+
+  try {
+    const health = await readHermesHealth(baseUrl, apiKey);
+    return {
+      status: 'running',
+      message: 'Hermes/Omega já está ativo.',
+      baseUrl,
+      health,
+    };
+  } catch {
+    // Not running yet; continue with a local WSL start attempt.
+  }
+
+  if (process.platform !== 'win32') {
+    throw new Error('Arranque automático do Hermes está disponível nesta versão apenas no Windows com WSL2.');
+  }
+
+  const hermesRoot = await findHermesRoot();
+  const wslHermesRoot = windowsPathToWslPath(hermesRoot);
+  const wslDistro = process.env.WGF_NOTE_WSL_DISTRO || 'Ubuntu';
+  const modelName = payload.model || 'omega-supreme';
+  const command = [
+    `cd ${quoteForBash(wslHermesRoot)}`,
+    'mkdir -p ~/.hermes/logs',
+    [
+      'API_SERVER_ENABLED=true',
+      `API_SERVER_PORT=${port}`,
+      'API_SERVER_HOST=127.0.0.1',
+      `API_SERVER_MODEL_NAME=${quoteForBash(modelName)}`,
+      'nohup .venv-wsl/bin/python ./omega gateway run --replace -v',
+      '> ~/.hermes/logs/wgf-api-server.log 2>&1 < /dev/null &',
+      'sleep 3',
+    ].join(' '),
+  ].join(' && ');
+
+  await runProcess('wsl.exe', ['-d', wslDistro, '--', 'bash', '-lc', command], {
+    timeoutMs: 15000,
+  });
+
+  const health = await waitForHermesApi(baseUrl, apiKey);
+  return {
+    status: 'started',
+    message: 'Hermes/Omega iniciado em WSL2 e API pronta.',
+    baseUrl,
+    hermesRoot,
+    wslDistro,
+    health,
+  };
 }
 
 function createAISessionHeaders(sessionId, apiKey) {
@@ -379,22 +578,19 @@ function registerDesktopIpcHandlers() {
   });
 
   ipcMain.handle('desktop:hermes-health', async (_event, payload) => {
-    const normalizedBaseUrl = normalizeHermesBaseUrl(payload.baseUrl);
-    const headers = createAIAuthHeaders(payload.apiKey);
-    const detailedResponse = await fetch(`${normalizedBaseUrl}/health/detailed`, {
-      headers,
+    return readHermesHealth(payload.baseUrl, payload.apiKey);
+  });
+
+  ipcMain.handle('desktop:hermes-start', async (_event, payload) => {
+    if (hermesStartPromise) {
+      return hermesStartPromise;
+    }
+
+    hermesStartPromise = startHermesGatewayFromWsl(payload).finally(() => {
+      hermesStartPromise = null;
     });
 
-    if (detailedResponse.ok) {
-      return detailedResponse.json();
-    }
-
-    const response = await fetch(`${normalizedBaseUrl}/health`, { headers });
-    if (!response.ok) {
-      throw new Error('Não foi possível contactar o health check do Hermes/Omega.');
-    }
-
-    return response.json();
+    return hermesStartPromise;
   });
 }
 

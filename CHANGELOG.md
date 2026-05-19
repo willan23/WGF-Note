@@ -2,6 +2,17 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.9] - 2026-05-19
+
+### Adicionado
+
+- Arranque nativo do Hermes/Omega pelo WGF Note no Windows/WSL2 quando `W:\hermes-agent-main` está disponível, expondo o API Server local na porta 8642.
+- Botão **Iniciar Hermes/Omega no WSL** nas definições e tentativa automática de iniciar o sidecar quando o provedor Hermes está escolhido e `/v1/models` ainda não responde.
+- Teste cobrindo o fluxo de autoarranque Hermes antes de listar modelos.
+
+### Corrigido
+
+- Erros `fetch failed` na listagem de modelos Hermes agora viram diagnóstico acionável em português, em vez de ficarem como falha crua do IPC Electron.
 ## [1.0.8] - 2026-05-19
 
 ### Adicionado

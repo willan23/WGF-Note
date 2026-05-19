@@ -23,6 +23,7 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('local-ai', () => {
@@ -126,6 +127,36 @@ describe('local-ai', () => {
         baseUrl: 'http://localhost:8642',
       }),
     ).resolves.toEqual([{ name: 'omega-supreme', model: 'omega-supreme' }]);
+  });
+
+  it('inicia Hermes/Omega no desktop quando o API server ainda não está aberto', async () => {
+    const listOpenAICompatibleModels = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce({ data: [{ id: 'omega-supreme' }] });
+    const startHermesGateway = vi.fn().mockResolvedValue({ status: 'started' });
+
+    vi.stubGlobal('window', {
+      __NOTE_PY_DESKTOP__: {
+        isDesktop: true,
+        listOpenAICompatibleModels,
+        startHermesGateway,
+      },
+    });
+
+    await expect(
+      listLocalAIModels({
+        provider: 'hermes',
+        baseUrl: 'http://127.0.0.1:8642',
+      }),
+    ).resolves.toEqual([{ name: 'omega-supreme', model: 'omega-supreme' }]);
+
+    expect(startHermesGateway).toHaveBeenCalledWith(
+      'http://127.0.0.1:8642',
+      '',
+      'omega-supreme',
+    );
+    expect(listOpenAICompatibleModels).toHaveBeenCalledTimes(2);
   });
 
   it('gera IDs de sessão Hermes estáveis por workspace', () => {

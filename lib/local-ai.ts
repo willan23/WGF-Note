@@ -164,6 +164,15 @@ export interface HermesHealthStatus {
   details?: Record<string, unknown>;
 }
 
+export interface HermesGatewayStartResult {
+  status: 'running' | 'started' | string;
+  message?: string;
+  baseUrl?: string;
+  health?: unknown;
+  hermesRoot?: string;
+  wslDistro?: string;
+}
+
 export interface LocalAIWorkspaceSummaryDependencies {
   listFiles: (directoryUri: string) => Promise<FileInfo[]>;
 }
@@ -460,51 +469,113 @@ async function requestOllamaJson<T>(
 }
 
 async function requestOpenAICompatibleJson<T>(
-  config: Pick<LocalAIConfig, 'baseUrl' | 'apiKey' | 'sessionId'>,
+  config: Pick<LocalAIConfig, 'provider' | 'baseUrl' | 'apiKey' | 'sessionId'>,
   endpoint: 'models' | 'chat',
   body?: unknown,
 ): Promise<T> {
   const bridge = getDesktopBridge();
-  if (bridge) {
-    return endpoint === 'models'
-      ? ((await bridge.listOpenAICompatibleModels(
-          config.baseUrl,
-          config.apiKey ?? '',
-        )) as T)
-      : ((await bridge.openAICompatibleChat(
-          config.baseUrl,
-          config.apiKey ?? '',
-          body,
-          getSessionHeaders(config)['X-Omega-Session-Id'],
-        )) as T);
-  }
 
-  const response = await fetch(
-    endpoint === 'models'
-      ? getOpenAICompatibleModelsUrl(config.baseUrl)
-      : getOpenAICompatibleChatUrl(config.baseUrl),
-    endpoint === 'models'
-      ? { headers: getAuthHeaders(config.apiKey) }
-      : {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders(config.apiKey),
-            ...getSessionHeaders(config),
-          },
-          body: JSON.stringify(body),
-        },
-  );
+  const requestJson = async () => {
+    if (bridge) {
+      return endpoint === 'models'
+        ? ((await bridge.listOpenAICompatibleModels(
+            config.baseUrl,
+            config.apiKey ?? '',
+          )) as T)
+        : ((await bridge.openAICompatibleChat(
+            config.baseUrl,
+            config.apiKey ?? '',
+            body,
+            getSessionHeaders(config)['X-Omega-Session-Id'],
+          )) as T);
+    }
 
-  if (!response.ok) {
-    throw new Error(
+    const response = await fetch(
       endpoint === 'models'
-        ? 'Não foi possível contactar a API compatível.'
-        : 'A API compatível não conseguiu responder.',
+        ? getOpenAICompatibleModelsUrl(config.baseUrl)
+        : getOpenAICompatibleChatUrl(config.baseUrl),
+      endpoint === 'models'
+        ? { headers: getAuthHeaders(config.apiKey) }
+        : {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...getAuthHeaders(config.apiKey),
+              ...getSessionHeaders(config),
+            },
+            body: JSON.stringify(body),
+          },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        endpoint === 'models'
+          ? 'Não foi possível contactar a API compatível.'
+          : 'A API compatível não conseguiu responder.',
+      );
+    }
+
+    return (await response.json()) as T;
+  };
+
+  try {
+    return await requestJson();
+  } catch (error) {
+    if (isHermesLocalAIProvider(getLocalAIProvider(config)) && bridge?.startHermesGateway) {
+      try {
+        await bridge.startHermesGateway(config.baseUrl, config.apiKey, 'omega-supreme');
+        return await requestJson();
+      } catch (retryError) {
+        throw createOpenAICompatibleRequestError(retryError, 'hermes', endpoint);
+      }
+    }
+
+    throw createOpenAICompatibleRequestError(error, getLocalAIProvider(config), endpoint);
+  }
+}
+
+function getUnknownErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || 'erro desconhecido');
+}
+
+function createOpenAICompatibleRequestError(
+  error: unknown,
+  provider: LocalAIProvider,
+  endpoint: 'models' | 'chat',
+): Error {
+  const message = getUnknownErrorMessage(error);
+
+  if (provider === 'hermes') {
+    return new Error(
+      [
+        endpoint === 'models'
+          ? 'Não foi possível listar modelos no Hermes/Omega.'
+          : 'O Hermes/Omega não conseguiu responder ao chat.',
+        'O WGF Note tentou usar/iniciar o API Server local em WSL2.',
+        `Detalhe: ${message}`,
+      ].join(' '),
     );
   }
 
-  return (await response.json()) as T;
+  return new Error(message);
+}
+
+export async function startHermesGateway(
+  baseUrl: string,
+  apiKey?: string,
+  model = 'omega-supreme',
+): Promise<HermesGatewayStartResult> {
+  assertBaseUrl(baseUrl, 'hermes');
+
+  const bridge = getDesktopBridge();
+  if (!bridge?.startHermesGateway) {
+    throw new Error('O arranque automático do Hermes/Omega está disponível apenas no desktop.');
+  }
+
+  const payload = await bridge.startHermesGateway(baseUrl, apiKey, model);
+  return typeof payload === 'object' && payload !== null
+    ? (payload as HermesGatewayStartResult)
+    : { status: 'unknown', message: 'Hermes/Omega respondeu sem detalhes.' };
 }
 
 export async function checkHermesHealth(
@@ -1148,11 +1219,12 @@ export async function listOllamaModels(baseUrl: string): Promise<OllamaModelInfo
 export async function listOpenAICompatibleModels(
   baseUrl: string,
   apiKey = '',
+  provider: LocalAIProvider = 'openai-compatible',
 ): Promise<LocalAIModelInfo[]> {
   assertBaseUrl(baseUrl, 'openai-compatible');
 
   const payload = await requestOpenAICompatibleJson<OpenAICompatibleModelListResponse>(
-    { baseUrl, apiKey },
+    { provider, baseUrl, apiKey },
     'models',
   );
 
@@ -1166,7 +1238,7 @@ export async function listLocalAIModels(
 ): Promise<LocalAIModelInfo[]> {
   return getLocalAIProvider(config) === 'ollama'
     ? listOllamaModels(config.baseUrl)
-    : listOpenAICompatibleModels(config.baseUrl, config.apiKey);
+    : listOpenAICompatibleModels(config.baseUrl, config.apiKey, config.provider);
 }
 
 export async function requestLocalAIExplanation(
