@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildLocalAIChatContextBlock,
+  checkHermesHealth,
   clipLocalAIContextValue,
+  createHermesSessionId,
   extractLocalAICodeReplacement,
   extractLocalAIRetrievalTerms,
   getOpenAICompatibleChatUrl,
   getOpenAICompatibleModelsUrl,
+  getHermesHealthUrl,
   getOllamaChatUrl,
   getOllamaTagsUrl,
   listLocalAIModels,
@@ -38,6 +41,9 @@ describe('local-ai', () => {
     );
     expect(getOpenAICompatibleModelsUrl('http://localhost:8642/v1/')).toBe(
       'http://localhost:8642/v1/models',
+    );
+    expect(getHermesHealthUrl('http://localhost:8642/v1')).toBe(
+      'http://localhost:8642/health/detailed',
     );
   });
 
@@ -101,6 +107,59 @@ describe('local-ai', () => {
         baseUrl: 'http://localhost:8642',
       }),
     ).resolves.toEqual([{ name: 'omega-supreme', model: 'omega-supreme' }]);
+  });
+
+  it('trata Hermes nativo como provedor OpenAI-compatible', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'omega-supreme' }],
+        }),
+      })),
+    );
+
+    await expect(
+      listLocalAIModels({
+        provider: 'hermes',
+        baseUrl: 'http://localhost:8642',
+      }),
+    ).resolves.toEqual([{ name: 'omega-supreme', model: 'omega-supreme' }]);
+  });
+
+  it('gera IDs de sessão Hermes estáveis por workspace', () => {
+    expect(createHermesSessionId('file:///projects/wgf-note')).toBe(
+      createHermesSessionId('file:///projects/wgf-note'),
+    );
+    expect(createHermesSessionId('file:///projects/wgf-note')).not.toBe(
+      createHermesSessionId('file:///projects/outro'),
+    );
+  });
+
+  it('consulta health check Hermes sem depender de /v1', async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        ({
+          ok: true,
+          json: async () => ({ status: 'healthy', model: 'omega-supreme' }),
+        }) as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      checkHermesHealth('http://localhost:8642/v1', 'secret'),
+    ).resolves.toMatchObject({
+      ok: true,
+      status: 'healthy',
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:8642/health/detailed',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
+      Authorization: 'Bearer secret',
+    });
   });
 
   it('exige endereço antes de listar modelos', async () => {
@@ -684,6 +743,106 @@ describe('local-ai', () => {
       editInstruction: '',
       memoryNotes: [],
     });
+  });
+
+  it('aceita ações Hermes do IDE e remove ações inseguras', async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        ({
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    answer: 'Preparei ações seguras.',
+                    references: [],
+                    editInstruction: '',
+                    memoryNotes: [],
+                    ideActions: [
+                      { type: 'open-file', relativePath: 'main.py', line: 2 },
+                      { type: 'open-file', relativePath: '../segredo.txt' },
+                      { type: 'search-project', query: 'EditorContext' },
+                      {
+                        type: 'insert-at-cursor',
+                        replacement: 'print("ok")',
+                        title: 'Inserir print',
+                      },
+                      {
+                        type: 'create-file',
+                        relativePath: 'src/novo.py',
+                        content: 'print("novo")',
+                      },
+                      {
+                        type: 'create-file',
+                        relativePath: '../fora.py',
+                        content: 'perigo',
+                      },
+                      { type: 'show-terminal' },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }),
+        }) as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      requestLocalAIChat(
+        {
+          provider: 'hermes',
+          baseUrl: 'http://localhost:8642',
+          model: 'omega-supreme',
+          apiKey: 'secret',
+          sessionId: 'wgf-note-test',
+        },
+        {
+          language: 'python',
+          fileName: 'main.py',
+          fullContent: '',
+          selectedText: '',
+          openFiles: [],
+          projectSummary: {
+            files: [
+              {
+                path: 'file:///projects/main.py',
+                relativePath: 'main.py',
+                language: 'python',
+                size: 0,
+              },
+            ],
+            omittedFileCount: 0,
+          },
+          retrievedSnippets: [],
+          workspaceMemoryNotes: [],
+        },
+        [{ role: 'user', content: 'cria uma ação' }],
+      ),
+    ).resolves.toMatchObject({
+      answer: 'Preparei ações seguras.',
+      ideActions: [
+        { type: 'open-file', relativePath: 'main.py', line: 2 },
+        { type: 'search-project', query: 'EditorContext' },
+        {
+          type: 'insert-at-cursor',
+          replacement: 'print("ok")',
+          title: 'Inserir print',
+        },
+        {
+          type: 'create-file',
+          relativePath: 'src/novo.py',
+          content: 'print("novo")',
+          open: true,
+        },
+        { type: 'show-terminal' },
+      ],
+    });
+
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer secret');
+    expect(headers['X-Omega-Session-Id']).toBe('wgf-note-test');
   });
 
   it('extrai termos úteis para recuperação local', () => {

@@ -21,6 +21,10 @@ import {
 } from '@/lib/workspace-search';
 
 type WorkspaceSearchPanelProps = {
+  initialQuery?: string;
+  initialReplacement?: string;
+  initialCaseSensitive?: boolean;
+  initialWholeWord?: boolean;
   onAdvancedSearch?: (seed: {
     query: string;
     replacement: string;
@@ -289,6 +293,10 @@ function createStyles(colors: ReturnType<typeof useColors>) {
 }
 
 export function WorkspaceSearchPanel({
+  initialQuery,
+  initialReplacement,
+  initialCaseSensitive,
+  initialWholeWord,
   onAdvancedSearch,
 }: WorkspaceSearchPanelProps) {
   const colors = useColors();
@@ -310,6 +318,22 @@ export function WorkspaceSearchPanel({
   const [isPlanning, setIsPlanning] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    if (initialQuery !== undefined) {
+      setQuery(initialQuery);
+    }
+    if (initialReplacement !== undefined) {
+      setReplacement(initialReplacement);
+      setShowReplace(Boolean(initialReplacement));
+    }
+    if (initialCaseSensitive !== undefined) {
+      setCaseSensitive(initialCaseSensitive);
+    }
+    if (initialWholeWord !== undefined) {
+      setWholeWord(initialWholeWord);
+    }
+  }, [initialCaseSensitive, initialQuery, initialReplacement, initialWholeWord]);
 
   const openFileContentByPath = useMemo(
     () =>

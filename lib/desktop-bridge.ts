@@ -23,7 +23,9 @@ export interface DesktopBridge {
     baseUrl: string,
     apiKey: string | undefined,
     body: unknown,
+    sessionId?: string,
   ) => Promise<unknown>;
+  hermesHealth: (baseUrl: string, apiKey?: string) => Promise<unknown>;
 }
 
 declare global {

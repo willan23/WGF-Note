@@ -30,6 +30,13 @@ contextBridge.exposeInMainWorld('__NOTE_PY_DESKTOP__', {
   ollamaChat: (baseUrl, body) => ipcRenderer.invoke('desktop:ollama-chat', { baseUrl, body }),
   listOpenAICompatibleModels: (baseUrl, apiKey) =>
     ipcRenderer.invoke('desktop:openai-compatible-list-models', { baseUrl, apiKey }),
-  openAICompatibleChat: (baseUrl, apiKey, body) =>
-    ipcRenderer.invoke('desktop:openai-compatible-chat', { baseUrl, apiKey, body }),
+  openAICompatibleChat: (baseUrl, apiKey, body, sessionId) =>
+    ipcRenderer.invoke('desktop:openai-compatible-chat', {
+      baseUrl,
+      apiKey,
+      body,
+      sessionId,
+    }),
+  hermesHealth: (baseUrl, apiKey) =>
+    ipcRenderer.invoke('desktop:hermes-health', { baseUrl, apiKey }),
 });

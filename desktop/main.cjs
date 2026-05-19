@@ -170,9 +170,25 @@ function normalizeOpenAICompatibleBaseUrl(baseUrl) {
     : `${normalizedBaseUrl}/v1`;
 }
 
+function normalizeHermesBaseUrl(baseUrl) {
+  const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+  return normalizedBaseUrl.endsWith('/v1')
+    ? normalizedBaseUrl.slice(0, -3)
+    : normalizedBaseUrl;
+}
+
 function createAIAuthHeaders(apiKey) {
   const trimmedApiKey = String(apiKey || '').trim();
   return trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {};
+}
+
+function createAISessionHeaders(sessionId, apiKey) {
+  const trimmedSessionId = String(sessionId || '').trim();
+  const trimmedApiKey = String(apiKey || '').trim();
+
+  return trimmedSessionId && trimmedApiKey
+    ? { 'X-Omega-Session-Id': trimmedSessionId }
+    : {};
 }
 
 async function ensureProjectsDirectory() {
@@ -350,12 +366,32 @@ function registerDesktopIpcHandlers() {
       headers: {
         'Content-Type': 'application/json',
         ...createAIAuthHeaders(payload.apiKey),
+        ...createAISessionHeaders(payload.sessionId, payload.apiKey),
       },
       body: JSON.stringify(payload.body),
     });
 
     if (!response.ok) {
       throw new Error('A API compatível não conseguiu responder.');
+    }
+
+    return response.json();
+  });
+
+  ipcMain.handle('desktop:hermes-health', async (_event, payload) => {
+    const normalizedBaseUrl = normalizeHermesBaseUrl(payload.baseUrl);
+    const headers = createAIAuthHeaders(payload.apiKey);
+    const detailedResponse = await fetch(`${normalizedBaseUrl}/health/detailed`, {
+      headers,
+    });
+
+    if (detailedResponse.ok) {
+      return detailedResponse.json();
+    }
+
+    const response = await fetch(`${normalizedBaseUrl}/health`, { headers });
+    if (!response.ok) {
+      throw new Error('Não foi possível contactar o health check do Hermes/Omega.');
     }
 
     return response.json();

@@ -11,7 +11,12 @@ import {
 import { useMemo, useState } from 'react';
 import { useColors } from '@/hooks/use-colors';
 import { useEditor } from '@/lib/editor-context';
-import { listLocalAIModels } from '@/lib/local-ai';
+import {
+  checkHermesHealth,
+  isHermesLocalAIProvider,
+  isOpenAICompatibleLocalAIProvider,
+  listLocalAIModels,
+} from '@/lib/local-ai';
 import { isDesktopRuntime } from '@/lib/desktop-bridge';
 import type { LocalAIProvider } from '@/lib/types';
 
@@ -20,6 +25,23 @@ type ProviderStatus = {
   title: string;
   message: string;
 };
+
+function getDefaultLocalAIBaseUrl(provider: LocalAIProvider): string {
+  if (provider === 'ollama') return 'http://127.0.0.1:11434';
+  if (provider === 'hermes') return 'http://127.0.0.1:8642';
+  return 'http://127.0.0.1:1234';
+}
+
+function getDefaultLocalAIModel(provider: LocalAIProvider): string {
+  if (provider === 'hermes') return 'omega-supreme';
+  return '';
+}
+
+function getProviderLabel(provider: LocalAIProvider): string {
+  if (provider === 'ollama') return 'Ollama';
+  if (provider === 'hermes') return 'Hermes nativo';
+  return 'API compatível';
+}
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -151,11 +173,13 @@ export default function SettingsScreen() {
     },
     providerRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 8,
       marginTop: 10,
     },
     providerButton: {
       flex: 1,
+      minWidth: 118,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -262,11 +286,8 @@ export default function SettingsScreen() {
 
     handleUpdate({
       localAiProvider: provider,
-      localAiBaseUrl:
-        provider === 'openai-compatible'
-          ? 'http://127.0.0.1:8642'
-          : 'http://127.0.0.1:11434',
-      localAiModel: provider === 'openai-compatible' ? 'omega-supreme' : '',
+      localAiBaseUrl: getDefaultLocalAIBaseUrl(provider),
+      localAiModel: getDefaultLocalAIModel(provider),
       localAiApiKey: '',
     });
     setProviderStatus(null);
@@ -274,6 +295,22 @@ export default function SettingsScreen() {
 
   const handleTestLocalAI = async () => {
     try {
+      let hermesHealthMessage: string | null = null;
+      if (isHermesLocalAIProvider(settings.localAiProvider)) {
+        try {
+          const health = await checkHermesHealth(
+            settings.localAiBaseUrl,
+            settings.localAiApiKey,
+          );
+          hermesHealthMessage = `Health: ${health.status}`;
+        } catch (error) {
+          hermesHealthMessage =
+            error instanceof Error
+              ? `Health indisponível: ${error.message}`
+              : 'Health indisponível.';
+        }
+      }
+
       const models = await listLocalAIModels({
         provider: settings.localAiProvider,
         baseUrl: settings.localAiBaseUrl,
@@ -282,7 +319,12 @@ export default function SettingsScreen() {
       Alert.alert(
         'Ligação concluída',
         models.length > 0
-          ? `Modelos disponíveis: ${models.map((model) => model.name).join(', ')}`
+          ? [
+              `Modelos disponíveis: ${models.map((model) => model.name).join(', ')}`,
+              hermesHealthMessage,
+            ]
+              .filter(Boolean)
+              .join('\n')
           : 'O servidor respondeu, mas ainda não há modelos anunciados.',
       );
       setProviderStatus({
@@ -290,10 +332,17 @@ export default function SettingsScreen() {
         title: models.length > 0 ? 'Ligação saudável' : 'Servidor sem modelos',
         message:
           models.length > 0
-            ? `Modelos encontrados: ${models.map((model) => model.name).join(', ')}`
-            : settings.localAiProvider === 'openai-compatible'
+            ? [
+                `Modelos encontrados: ${models.map((model) => model.name).join(', ')}`,
+                hermesHealthMessage,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : settings.localAiProvider === 'hermes'
               ? 'A API respondeu, mas /v1/models não devolveu modelos. Confirme API_SERVER_MODEL_NAME ou a configuração do gateway.'
-              : 'O Ollama respondeu, mas ainda não há modelos instalados.',
+              : isOpenAICompatibleLocalAIProvider(settings.localAiProvider)
+                ? 'A API respondeu, mas /v1/models não devolveu modelos. Confirme o servidor compatível.'
+                : 'O Ollama respondeu, mas ainda não há modelos instalados.',
       });
     } catch (error) {
       const message =
@@ -306,9 +355,11 @@ export default function SettingsScreen() {
         tone: 'error',
         title: 'Ligação falhou',
         message:
-          settings.localAiProvider === 'openai-compatible'
+          settings.localAiProvider === 'hermes'
             ? `${message} Para Hermes/Omega, confirme WSL2, API_SERVER_ENABLED=true e porta 8642.`
-            : `${message} Confirme se o Ollama está aberto e acessível.`,
+            : isOpenAICompatibleLocalAIProvider(settings.localAiProvider)
+              ? `${message} Confirme se a API compatível está aberta e expõe /v1/models.`
+              : `${message} Confirme se o Ollama está aberto e acessível.`,
       });
     }
   };
@@ -316,9 +367,7 @@ export default function SettingsScreen() {
   const handleAutoConfigureLocalAI = async () => {
     const baseUrl =
       settings.localAiBaseUrl.trim() ||
-      (settings.localAiProvider === 'openai-compatible'
-        ? 'http://127.0.0.1:8642'
-        : 'http://127.0.0.1:11434');
+      getDefaultLocalAIBaseUrl(settings.localAiProvider);
 
     try {
       const models = await listLocalAIModels({
@@ -329,17 +378,21 @@ export default function SettingsScreen() {
       if (models.length === 0) {
         Alert.alert(
           'Servidor encontrado',
-          settings.localAiProvider === 'openai-compatible'
+          settings.localAiProvider === 'hermes'
             ? 'A API respondeu, mas não anunciou modelos. Confirme se o Hermes/Omega API Server está ativo.'
-            : 'O servidor respondeu, mas ainda não há modelos instalados. Instale um modelo coder no Ollama e volte a tentar.',
+            : isOpenAICompatibleLocalAIProvider(settings.localAiProvider)
+              ? 'A API respondeu, mas não anunciou modelos. Confirme o modelo configurado no servidor compatível.'
+              : 'O servidor respondeu, mas ainda não há modelos instalados. Instale um modelo coder no Ollama e volte a tentar.',
         );
         setProviderStatus({
           tone: 'warning',
           title: 'Servidor encontrado',
           message:
-            settings.localAiProvider === 'openai-compatible'
+            settings.localAiProvider === 'hermes'
               ? 'O Hermes/Omega respondeu, mas não anunciou modelos. O chat pode funcionar se o modelo estiver correto.'
-              : 'O Ollama respondeu, mas precisa de um modelo instalado.',
+              : isOpenAICompatibleLocalAIProvider(settings.localAiProvider)
+                ? 'A API compatível respondeu, mas precisa anunciar ou aceitar o modelo configurado.'
+                : 'O Ollama respondeu, mas precisa de um modelo instalado.',
         });
         handleUpdate({
           localAiEnabled: true,
@@ -355,7 +408,7 @@ export default function SettingsScreen() {
       const candidateModels = localModels.length > 0 ? localModels : models;
       const preferredModel =
         candidateModels.find((item) =>
-          settings.localAiProvider === 'openai-compatible'
+          isOpenAICompatibleLocalAIProvider(settings.localAiProvider)
             ? /omega|hermes|agent/i.test(`${item.name} ${item.model}`)
             : /coder|code|qwen/i.test(`${item.name} ${item.model}`),
         ) ??
@@ -516,7 +569,7 @@ export default function SettingsScreen() {
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Ativar IA local</Text>
               <Text style={styles.settingDescription}>
-                Usa Ollama local ou Hermes/Omega por API compatível, sem API paga.
+                Usa Ollama, Hermes/Omega nativo ou outra API compatível, sem API paga.
               </Text>
             </View>
             <Switch
@@ -529,7 +582,7 @@ export default function SettingsScreen() {
           <View style={styles.fieldGroup}>
             <Text style={styles.settingLabel}>Provedor</Text>
             <Text style={styles.settingDescription}>
-              Ollama é simples para modelos locais; Hermes/Omega liga um motor de agente externo.
+              Hermes nativo transforma respostas do agente em ações dentro do IDE.
             </Text>
             <View style={styles.providerRow}>
               <Pressable
@@ -545,7 +598,20 @@ export default function SettingsScreen() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: settings.localAiProvider === 'openai-compatible' }}
+                accessibilityState={{ selected: settings.localAiProvider === 'hermes' }}
+                style={[
+                  styles.providerButton,
+                  settings.localAiProvider === 'hermes' && styles.providerButtonActive,
+                ]}
+                onPress={() => handleProviderChange('hermes')}
+              >
+                <Text style={styles.providerButtonText}>Hermes nativo</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: settings.localAiProvider === 'openai-compatible',
+                }}
                 style={[
                   styles.providerButton,
                   settings.localAiProvider === 'openai-compatible' &&
@@ -553,18 +619,20 @@ export default function SettingsScreen() {
                 ]}
                 onPress={() => handleProviderChange('openai-compatible')}
               >
-                <Text style={styles.providerButtonText}>Hermes/Omega</Text>
+                <Text style={styles.providerButtonText}>Compatível</Text>
               </Pressable>
             </View>
-            {settings.localAiProvider === 'openai-compatible' ? (
+            {isHermesLocalAIProvider(settings.localAiProvider) ? (
               <View style={styles.guideCard}>
                 <Text style={styles.guideTitle}>Como ligar Hermes/Omega</Text>
                 <Text style={styles.guideText}>
                   No Windows, execute o Hermes em WSL2 e ative o API Server antes de
-                  testar a ligação no WGF Note.
+                  testar a ligação no WGF Note. Com API_SERVER_KEY, o WGF Note também
+                  envia uma sessão estável para continuidade nativa.
                 </Text>
                 <Text style={styles.guideCode}>API_SERVER_ENABLED=true</Text>
                 <Text style={styles.guideCode}>API_SERVER_PORT=8642</Text>
+                <Text style={styles.guideCode}>API_SERVER_KEY=opcional_para_sessao</Text>
                 <Text style={styles.guideCode}>omega gateway start</Text>
               </View>
             ) : null}
@@ -572,13 +640,15 @@ export default function SettingsScreen() {
 
           <View style={styles.fieldGroup}>
             <Text style={styles.settingLabel}>
-              {settings.localAiProvider === 'openai-compatible'
-                ? 'Endereço da API compatível'
+              {isOpenAICompatibleLocalAIProvider(settings.localAiProvider)
+                ? `Endereço ${getProviderLabel(settings.localAiProvider)}`
                 : 'Endereço do Ollama'}
             </Text>
             <Text style={styles.settingDescription}>
-              {settings.localAiProvider === 'openai-compatible'
+              {settings.localAiProvider === 'hermes'
                 ? 'Para Hermes/Omega, o padrão local é http://127.0.0.1:8642.'
+                : settings.localAiProvider === 'openai-compatible'
+                  ? 'Use o endereço raiz; o WGF Note adiciona /v1 automaticamente.'
                 : 'No desktop, o valor padrão normalmente é http://127.0.0.1:11434.'}
             </Text>
             <TextInput
@@ -593,11 +663,11 @@ export default function SettingsScreen() {
             />
           </View>
 
-          {settings.localAiProvider === 'openai-compatible' ? (
+          {isOpenAICompatibleLocalAIProvider(settings.localAiProvider) ? (
             <View style={styles.fieldGroup}>
               <Text style={styles.settingLabel}>Chave API opcional</Text>
               <Text style={styles.settingDescription}>
-                Só preencha se o Hermes/Omega ou outro servidor exigir Bearer token.
+                No Hermes, também permite sessão nativa via X-Omega-Session-Id quando API_SERVER_KEY estiver ativo.
               </Text>
               <TextInput
                 accessibilityLabel="Chave API da IA local"
@@ -616,8 +686,10 @@ export default function SettingsScreen() {
           <View style={styles.fieldGroup}>
             <Text style={styles.settingLabel}>Modelo</Text>
             <Text style={styles.settingDescription}>
-              {settings.localAiProvider === 'openai-compatible'
+              {settings.localAiProvider === 'hermes'
                 ? 'No Hermes/Omega, normalmente é omega-supreme.'
+                : settings.localAiProvider === 'openai-compatible'
+                  ? 'Escreva o ID exato anunciado pela API compatível.'
                 : 'Escreva o nome exato do modelo instalado no Ollama.'}
             </Text>
             <TextInput
@@ -657,7 +729,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>WGF Note v1.0.6</Text>
+          <Text style={styles.footerText}>WGF Note v1.0.7</Text>
         </View>
       </ScrollView>
     </View>

@@ -4,7 +4,7 @@
 
 import type { CodeLanguage } from './types-extended';
 
-export type LocalAIProvider = 'ollama' | 'openai-compatible';
+export type LocalAIProvider = 'ollama' | 'hermes' | 'openai-compatible';
 
 export interface PythonFile {
   id: string;

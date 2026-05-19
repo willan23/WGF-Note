@@ -10,6 +10,7 @@ export interface LocalAIConfig {
   baseUrl: string;
   model: string;
   apiKey?: string;
+  sessionId?: string;
 }
 
 export interface LocalAIContext {
@@ -67,6 +68,7 @@ export interface LocalAIChatMessage {
   content: string;
   references?: LocalAIChatReference[];
   editInstruction?: string;
+  ideActions?: LocalAIIdeAction[];
 }
 
 export interface LocalAIChatReference {
@@ -81,7 +83,36 @@ export interface LocalAIChatResponse {
   references: LocalAIChatReference[];
   editInstruction: string;
   memoryNotes: LocalAIWorkspaceMemoryNote[];
+  ideActions?: LocalAIIdeAction[];
 }
+
+export type LocalAIIdeAction =
+  | {
+      type: 'open-file';
+      relativePath: string;
+      line?: number;
+      column?: number;
+      label?: string;
+    }
+  | {
+      type: 'search-project';
+      query: string;
+    }
+  | {
+      type: 'show-terminal';
+    }
+  | {
+      type: 'insert-at-cursor' | 'replace-current-selection' | 'replace-current-file';
+      replacement: string;
+      title?: string;
+      summary?: string;
+    }
+  | {
+      type: 'create-file';
+      relativePath: string;
+      content: string;
+      open?: boolean;
+    };
 
 export interface LocalAIRetrievedSnippet {
   path: string;
@@ -125,6 +156,12 @@ interface OpenAICompatibleChatResponse {
       content?: string;
     };
   }>;
+}
+
+export interface HermesHealthStatus {
+  ok: boolean;
+  status: string;
+  details?: Record<string, unknown>;
 }
 
 export interface LocalAIWorkspaceSummaryDependencies {
@@ -220,6 +257,38 @@ const chatResponseSchema = {
         required: ['text', 'evidences'],
       },
     },
+    ideActions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          type: {
+            type: 'string',
+            enum: [
+              'open-file',
+              'search-project',
+              'show-terminal',
+              'insert-at-cursor',
+              'replace-current-selection',
+              'replace-current-file',
+              'create-file',
+            ],
+          },
+          relativePath: { type: 'string' },
+          line: { type: 'integer' },
+          column: { type: 'integer' },
+          label: { type: 'string' },
+          query: { type: 'string' },
+          replacement: { type: 'string' },
+          title: { type: 'string' },
+          summary: { type: 'string' },
+          content: { type: 'string' },
+          open: { type: 'boolean' },
+        },
+        required: ['type'],
+      },
+    },
   },
   required: ['answer', 'references', 'editInstruction', 'memoryNotes'],
 } as const;
@@ -230,6 +299,7 @@ const defaultRetrievalMaxSnippets = 4;
 const defaultRetrievalSurroundingLines = 2;
 const maxFullContextLength = 12000;
 const maxSelectionContextLength = 4000;
+const maxIdeActionPayloadLength = 100000;
 const retrievalStopWords = new Set([
   'a',
   'as',
@@ -290,8 +360,35 @@ function normalizeOpenAICompatibleBaseUrl(baseUrl: string): string {
   return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
 }
 
+function normalizeHermesBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/v1') ? trimmed.slice(0, -3) : trimmed;
+}
+
 function getLocalAIProvider(config: Pick<LocalAIConfig, 'provider'>): LocalAIProvider {
   return config.provider ?? 'ollama';
+}
+
+export function isOpenAICompatibleLocalAIProvider(
+  provider: LocalAIProvider | undefined,
+): boolean {
+  return provider === 'openai-compatible' || provider === 'hermes';
+}
+
+export function isHermesLocalAIProvider(provider: LocalAIProvider | undefined): boolean {
+  return provider === 'hermes';
+}
+
+export function createHermesSessionId(seed: string): string {
+  const normalizedSeed = seed.trim() || 'workspace';
+  let hash = 2166136261;
+
+  for (let index = 0; index < normalizedSeed.length; index += 1) {
+    hash ^= normalizedSeed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `wgf-note-${(hash >>> 0).toString(36)}`;
 }
 
 export function getOllamaChatUrl(baseUrl: string): string {
@@ -310,9 +407,22 @@ export function getOpenAICompatibleModelsUrl(baseUrl: string): string {
   return `${normalizeOpenAICompatibleBaseUrl(baseUrl)}/models`;
 }
 
+export function getHermesHealthUrl(baseUrl: string): string {
+  return `${normalizeHermesBaseUrl(baseUrl)}/health/detailed`;
+}
+
 function getAuthHeaders(apiKey?: string): Record<string, string> {
   const trimmedApiKey = apiKey?.trim();
   return trimmedApiKey ? { Authorization: `Bearer ${trimmedApiKey}` } : {};
+}
+
+function getSessionHeaders(
+  config: Pick<LocalAIConfig, 'apiKey' | 'sessionId'>,
+): Record<string, string> {
+  const sessionId = config.sessionId?.trim();
+  const apiKey = config.apiKey?.trim();
+
+  return sessionId && apiKey ? { 'X-Omega-Session-Id': sessionId } : {};
 }
 
 async function requestOllamaJson<T>(
@@ -350,7 +460,7 @@ async function requestOllamaJson<T>(
 }
 
 async function requestOpenAICompatibleJson<T>(
-  config: Pick<LocalAIConfig, 'baseUrl' | 'apiKey'>,
+  config: Pick<LocalAIConfig, 'baseUrl' | 'apiKey' | 'sessionId'>,
   endpoint: 'models' | 'chat',
   body?: unknown,
 ): Promise<T> {
@@ -365,6 +475,7 @@ async function requestOpenAICompatibleJson<T>(
           config.baseUrl,
           config.apiKey ?? '',
           body,
+          getSessionHeaders(config)['X-Omega-Session-Id'],
         )) as T);
   }
 
@@ -379,6 +490,7 @@ async function requestOpenAICompatibleJson<T>(
           headers: {
             'Content-Type': 'application/json',
             ...getAuthHeaders(config.apiKey),
+            ...getSessionHeaders(config),
           },
           body: JSON.stringify(body),
         },
@@ -393,6 +505,54 @@ async function requestOpenAICompatibleJson<T>(
   }
 
   return (await response.json()) as T;
+}
+
+export async function checkHermesHealth(
+  baseUrl: string,
+  apiKey?: string,
+): Promise<HermesHealthStatus> {
+  assertBaseUrl(baseUrl, 'hermes');
+
+  const bridge = getDesktopBridge();
+  const payload = bridge
+    ? await bridge.hermesHealth(baseUrl, apiKey)
+    : await (async () => {
+        const detailedResponse = await fetch(getHermesHealthUrl(baseUrl), {
+          headers: getAuthHeaders(apiKey),
+        });
+
+        if (detailedResponse.ok) {
+          return detailedResponse.json();
+        }
+
+        const response = await fetch(`${normalizeHermesBaseUrl(baseUrl)}/health`, {
+          headers: getAuthHeaders(apiKey),
+        });
+
+        if (!response.ok) {
+          throw new Error('Não foi possível contactar o health check do Hermes/Omega.');
+        }
+
+        return response.json();
+      })();
+
+  const candidate =
+    typeof payload === 'object' && payload !== null
+      ? (payload as Record<string, unknown>)
+      : {};
+  const rawStatus = candidate.status;
+  const ok = candidate.ok === true || rawStatus === 'ok' || rawStatus === 'healthy';
+
+  return {
+    ok,
+    status:
+      typeof rawStatus === 'string'
+        ? rawStatus
+        : ok
+          ? 'healthy'
+          : 'unknown',
+    details: candidate,
+  };
 }
 
 async function requestLocalAIChatContent(
@@ -443,7 +603,9 @@ function assertBaseUrl(baseUrl: string, provider: LocalAIProvider = 'ollama'): v
     throw new Error(
       provider === 'ollama'
         ? 'Defina o endereço do Ollama.'
-        : 'Defina o endereço da API compatível.',
+        : provider === 'hermes'
+          ? 'Defina o endereço do Hermes/Omega.'
+          : 'Defina o endereço da API compatível.',
     );
   }
 }
@@ -718,6 +880,111 @@ function dedupeChatReferences(
   return Array.from(referencesByKey.values());
 }
 
+function isSafeWorkspaceRelativePath(relativePath: string): boolean {
+  const normalizedPath = relativePath.trim().replace(/\\/g, '/');
+  if (!normalizedPath || normalizedPath.includes('://')) return false;
+  if (normalizedPath.startsWith('/') || normalizedPath.startsWith('~')) return false;
+  if (/^[a-zA-Z]:/.test(normalizedPath)) return false;
+
+  return normalizedPath
+    .split('/')
+    .every((part) => part.length > 0 && part !== '.' && part !== '..');
+}
+
+function sanitizeShortText(value: unknown, maxLength = 200): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
+}
+
+function sanitizePayloadText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  if (value.length > maxIdeActionPayloadLength) return null;
+  return value;
+}
+
+function sanitizeIdeAction(
+  action: unknown,
+  knownPaths: Set<string>,
+): LocalAIIdeAction | null {
+  if (!action || typeof action !== 'object') return null;
+
+  const candidate = action as Partial<LocalAIIdeAction>;
+  const type = typeof candidate.type === 'string' ? candidate.type : '';
+
+  if (type === 'open-file') {
+    const relativePath = sanitizeShortText((candidate as { relativePath?: unknown }).relativePath, 500);
+    if (!relativePath || !knownPaths.has(relativePath)) return null;
+
+    const nextAction: LocalAIIdeAction = { type, relativePath };
+    const line = (candidate as { line?: unknown }).line;
+    const column = (candidate as { column?: unknown }).column;
+    const label = sanitizeShortText((candidate as { label?: unknown }).label);
+
+    if (typeof line === 'number' && Number.isFinite(line)) {
+      nextAction.line = Math.max(1, Math.floor(line));
+    }
+
+    if (typeof column === 'number' && Number.isFinite(column)) {
+      nextAction.column = Math.max(1, Math.floor(column));
+    }
+
+    if (label) {
+      nextAction.label = label;
+    }
+
+    return nextAction;
+  }
+
+  if (type === 'search-project') {
+    const query = sanitizeShortText((candidate as { query?: unknown }).query, 500);
+    return query ? { type, query } : null;
+  }
+
+  if (type === 'show-terminal') {
+    return { type };
+  }
+
+  if (
+    type === 'insert-at-cursor' ||
+    type === 'replace-current-selection' ||
+    type === 'replace-current-file'
+  ) {
+    const replacement = sanitizePayloadText(
+      (candidate as { replacement?: unknown }).replacement,
+    );
+    if (replacement === null) return null;
+
+    const title = sanitizeShortText((candidate as { title?: unknown }).title);
+    const summary = sanitizeShortText((candidate as { summary?: unknown }).summary, 500);
+
+    return {
+      type,
+      replacement,
+      ...(title ? { title } : {}),
+      ...(summary ? { summary } : {}),
+    };
+  }
+
+  if (type === 'create-file') {
+    const relativePath = sanitizeShortText((candidate as { relativePath?: unknown }).relativePath, 500);
+    const content = sanitizePayloadText((candidate as { content?: unknown }).content);
+    if (!relativePath || content === null || !isSafeWorkspaceRelativePath(relativePath)) {
+      return null;
+    }
+
+    return {
+      type,
+      relativePath,
+      content,
+      open: (candidate as { open?: unknown }).open === false ? false : true,
+    };
+  }
+
+  return null;
+}
+
 function sanitizeChatResponse(
   response: LocalAIChatResponse,
   context: LocalAIChatContext,
@@ -732,12 +999,19 @@ function sanitizeChatResponse(
   const rawMemoryNotes: unknown[] = Array.isArray(response.memoryNotes)
     ? (response.memoryNotes as unknown[])
     : [];
+  const rawIdeActions: unknown[] = Array.isArray(response.ideActions)
+    ? (response.ideActions as unknown[])
+    : [];
   const references = dedupeChatReferences(
     rawReferences.flatMap((reference) => {
       const sanitized = sanitizeChatReference(reference, knownPaths);
       return sanitized ? [sanitized] : [];
     }),
   );
+  const ideActions = rawIdeActions.flatMap((action) => {
+    const sanitized = sanitizeIdeAction(action, knownPaths);
+    return sanitized ? [sanitized] : [];
+  });
   const memoryNotes = rawMemoryNotes
     .flatMap((note) => {
       const candidate =
@@ -773,6 +1047,7 @@ function sanitizeChatResponse(
     references,
     editInstruction: response.editInstruction.trim(),
     memoryNotes,
+    ...(ideActions.length > 0 ? { ideActions } : {}),
   };
 }
 
@@ -952,7 +1227,10 @@ export async function requestLocalAIEditProposal(
       context,
     );
   } catch (error) {
-    if (getLocalAIProvider(config) === 'openai-compatible' && content?.trim()) {
+    if (
+      isOpenAICompatibleLocalAIProvider(getLocalAIProvider(config)) &&
+      content?.trim()
+    ) {
       return createPlainEditProposal(content, context);
     }
 
@@ -1132,13 +1410,24 @@ export async function requestLocalAIChat(
 ): Promise<LocalAIChatResponse> {
   assertConfigured(config);
 
+  const provider = getLocalAIProvider(config);
+  const ideActionContract =
+    'Quando fizer sentido controlar o IDE, preenche ideActions com ações pequenas e seguras: ' +
+    'open-file para abrir relativePath conhecido; search-project com query; show-terminal; ' +
+    'insert-at-cursor, replace-current-selection ou replace-current-file com replacement; ' +
+    'create-file com relativePath relativo seguro e content. O WGF Note mostrará botões e pedirá confirmação; nunca digas que aplicaste algo antes do utilizador clicar.';
+  const providerInstruction =
+    provider === 'hermes'
+      ? `Estás ligado como Hermes/Omega nativo do WGF Note. Pensa como agente do IDE: usa ideActions para transformar intenção em comandos revisáveis dentro da bancada. ${ideActionContract}`
+      : ideActionContract;
+
   const content = await requestLocalAIChatContent(
     config,
     [
         {
           role: 'system',
           content:
-            'És um assistente de programação local-first. Responde em português claro, usa o contexto recebido, dá prioridade aos trechos recuperados quando forem relevantes, admite incerteza quando faltar informação e nunca afirmes que alteraste ficheiros sem uma confirmação explícita do utilizador. Devolve somente JSON válido segundo o schema pedido. references só podem usar relativePath presentes no mapa do projeto ou nos trechos recuperados; usa linha/coluna apenas quando estiveres confiante. editInstruction deve ficar vazio quando não houver uma mudança concreta e segura; quando houver pedido de código, pode descrever uma mudança para a seleção atual ou para inserção no cursor se não houver seleção. memoryNotes deve conter apenas factos duráveis e úteis sobre a arquitetura, decisões ou convenções do workspace; cada nota precisa de texto curto e evidências reais em ficheiros quando existirem. Deixa vazio para suposições, detalhes passageiros ou segredos.',
+            `És um assistente de programação local-first. Responde em português claro, usa o contexto recebido, dá prioridade aos trechos recuperados quando forem relevantes, admite incerteza quando faltar informação e nunca afirmes que alteraste ficheiros sem uma confirmação explícita do utilizador. Devolve somente JSON válido segundo o schema pedido. references só podem usar relativePath presentes no mapa do projeto ou nos trechos recuperados; usa linha/coluna apenas quando estiveres confiante. editInstruction deve ficar vazio quando não houver uma mudança concreta e segura; quando houver pedido de código, pode descrever uma mudança para a seleção atual ou para inserção no cursor se não houver seleção. memoryNotes deve conter apenas factos duráveis e úteis sobre a arquitetura, decisões ou convenções do workspace; cada nota precisa de texto curto e evidências reais em ficheiros quando existirem. Deixa vazio para suposições, detalhes passageiros ou segredos. ${providerInstruction}`,
         },
         {
           role: 'user',
@@ -1152,7 +1441,7 @@ export async function requestLocalAIChat(
   try {
     parsed = parseStructuredContent<LocalAIChatResponse>(content);
   } catch (error) {
-    if (getLocalAIProvider(config) === 'openai-compatible' && content?.trim()) {
+    if (isOpenAICompatibleLocalAIProvider(provider) && content?.trim()) {
       return createPlainChatResponse(content);
     }
 

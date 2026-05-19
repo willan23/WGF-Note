@@ -158,6 +158,32 @@ function EditorScreenContent() {
     setShowProjectSearchModal(true);
   }, []);
 
+  const handleOpenProjectSearchFromAI = useCallback(
+    (query: string) => {
+      const seed: ProjectSearchSeed = {
+        query,
+        replacement: '',
+        caseSensitive: false,
+        wholeWord: false,
+      };
+      setProjectSearchSeed(seed);
+
+      if (width >= 980) {
+        setSidebarMode('search');
+        setShowWorkspaceSidebar(true);
+        return;
+      }
+
+      setShowProjectSearchModal(true);
+    },
+    [width],
+  );
+
+  const handleShowTerminalFromAI = useCallback(() => {
+    setActiveBottomPanel('terminal');
+    setShowLocalAIModal(false);
+  }, []);
+
   const handleToggleWorkspace = useCallback(() => {
     if (width >= 980) {
       setSidebarMode('explorer');
@@ -496,6 +522,10 @@ function EditorScreenContent() {
               <WorkspaceExplorer />
             ) : (
               <WorkspaceSearchPanel
+                initialQuery={projectSearchSeed?.query}
+                initialReplacement={projectSearchSeed?.replacement}
+                initialCaseSensitive={projectSearchSeed?.caseSensitive}
+                initialWholeWord={projectSearchSeed?.wholeWord}
                 onAdvancedSearch={handleReviewWorkspaceSearch}
               />
             )}
@@ -591,6 +621,8 @@ function EditorScreenContent() {
         onClose={() => setShowLocalAIModal(false)}
         onApplyProposal={handleApplyAIProposal}
         onOpenReference={handleOpenAIReference}
+        onOpenProjectSearch={handleOpenProjectSearchFromAI}
+        onShowTerminal={handleShowTerminalFromAI}
       />
       <CodeSuggestions
         visible={showSuggestions}

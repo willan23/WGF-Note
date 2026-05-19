@@ -12,7 +12,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
-import { listFiles, openFile } from '@/lib/file-system-manager';
+import {
+  fileExists,
+  listFiles,
+  openFile,
+  writeFileContent,
+} from '@/lib/file-system-manager';
 import { useEditor } from '@/lib/editor-context';
 import { isDesktopRuntime } from '@/lib/desktop-bridge';
 import {
@@ -37,6 +42,7 @@ import { getWorkspaceRelativePath } from '@/lib/workspace-search';
 import type {
   LocalAIChatMessage,
   LocalAIChatReference,
+  LocalAIIdeAction,
   LocalAIEditProposal,
   LocalAIEditTargetScope,
   LocalAIExplanation,
@@ -46,7 +52,10 @@ import type {
 } from '@/lib/local-ai';
 import {
   clipLocalAIContextValue,
+  createHermesSessionId,
   extractLocalAICodeReplacement,
+  isHermesLocalAIProvider,
+  isOpenAICompatibleLocalAIProvider,
   retrieveRelevantWorkspaceSnippetsForLocalAI,
   listLocalAIModels,
   requestLocalAIChat,
@@ -77,6 +86,8 @@ interface LocalAIModalProps {
     source: { start: number; end: number; text: string },
   ) => void;
   onOpenReference: (path: string, line?: number, column?: number) => void | Promise<void>;
+  onOpenProjectSearch?: (query: string) => void;
+  onShowTerminal?: () => void;
 }
 
 interface ChatMessageRowProps {
@@ -84,6 +95,7 @@ interface ChatMessageRowProps {
   onOpenReference: (reference: LocalAIChatReference) => void;
   onCreateProposal: (instruction: string) => void;
   onUseAssistantCode: (content: string) => void;
+  onRunIdeAction: (action: LocalAIIdeAction) => void | Promise<void>;
   styles: ReturnType<typeof createStyles>;
 }
 
@@ -104,11 +116,39 @@ const emptyProjectSummary: LocalAIProjectSummary = {
 };
 const emptyRetrievedSnippets: LocalAIRetrievedSnippet[] = [];
 
+function getLocalAIIdeActionLabel(action: LocalAIIdeAction): string {
+  switch (action.type) {
+    case 'open-file':
+      return `Abrir ${action.label ?? action.relativePath}`;
+    case 'search-project':
+      return `Pesquisar “${action.query}”`;
+    case 'show-terminal':
+      return 'Mostrar terminal';
+    case 'insert-at-cursor':
+      return 'Preparar inserção';
+    case 'replace-current-selection':
+      return 'Preparar seleção';
+    case 'replace-current-file':
+      return 'Preparar ficheiro';
+    case 'create-file':
+      return `Criar ${action.relativePath}`;
+  }
+}
+
+function createWorkspaceChildUri(rootUri: string, relativePath: string): string | null {
+  try {
+    return new URL(relativePath, rootUri.endsWith('/') ? rootUri : `${rootUri}/`).href;
+  } catch {
+    return null;
+  }
+}
+
 const ChatMessageRow = memo(function ChatMessageRow({
   message,
   onOpenReference,
   onCreateProposal,
   onUseAssistantCode,
+  onRunIdeAction,
   styles,
 }: ChatMessageRowProps) {
   const isUser = message.role === 'user';
@@ -150,6 +190,26 @@ const ChatMessageRow = memo(function ChatMessageRow({
         >
           <Text style={styles.inlineChatActionText}>Gerar proposta</Text>
         </Pressable>
+      ) : null}
+      {!isUser && message.ideActions && message.ideActions.length > 0 ? (
+        <View style={styles.ideActionCard}>
+          <Text style={styles.ideActionTitle}>Ações Hermes no IDE</Text>
+          <View style={styles.ideActionRow}>
+            {message.ideActions.map((action, index) => (
+              <Pressable
+                key={`${action.type}-${index}`}
+                accessibilityRole="button"
+                accessibilityLabel={getLocalAIIdeActionLabel(action)}
+                onPress={() => void onRunIdeAction(action)}
+                style={styles.ideActionChip}
+              >
+                <Text style={styles.ideActionText}>
+                  {getLocalAIIdeActionLabel(action)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       ) : null}
       {hasCodeBlock ? (
         <Pressable
@@ -705,6 +765,38 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 12,
       fontWeight: '600',
     },
+    ideActionCard: {
+      marginTop: 4,
+      borderWidth: 1,
+      borderColor: `${colors.primary}44`,
+      backgroundColor: `${colors.primary}0f`,
+      borderRadius: 10,
+      padding: 10,
+      gap: 8,
+    },
+    ideActionTitle: {
+      color: colors.foreground,
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    ideActionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    ideActionChip: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: `${colors.primary}66`,
+      backgroundColor: colors.background,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    ideActionText: {
+      color: colors.foreground,
+      fontSize: 12,
+      fontWeight: '700',
+    },
     inlineChatAction: {
       marginTop: 4,
       alignSelf: 'flex-start',
@@ -770,6 +862,8 @@ export function LocalAIModal({
   onClose,
   onApplyProposal,
   onOpenReference,
+  onOpenProjectSearch,
+  onShowTerminal,
 }: LocalAIModalProps) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -833,9 +927,19 @@ export function LocalAIModal({
     }),
     [content, fileName, filePath, instruction, language, selectedText],
   );
+  const hermesSessionId = useMemo(
+    () => (isHermesLocalAIProvider(provider) ? createHermesSessionId(rootDirectoryUri) : undefined),
+    [provider, rootDirectoryUri],
+  );
   const aiConfig = useMemo(
-    () => ({ provider, baseUrl, model, apiKey }),
-    [apiKey, baseUrl, model, provider],
+    () => ({
+      provider,
+      baseUrl,
+      model,
+      apiKey,
+      sessionId: apiKey.trim() ? hermesSessionId : undefined,
+    }),
+    [apiKey, baseUrl, hermesSessionId, model, provider],
   );
   const canUseLocalAI = enabled && Boolean(baseUrl.trim()) && Boolean(model.trim());
   const usableWorkspaceMemoryNotes = useMemo(
@@ -946,9 +1050,11 @@ export function LocalAIModal({
   const handleAutoConfigureLocalAI = useCallback(async () => {
     const detectedBaseUrl =
       baseUrl.trim() ||
-      (provider === 'openai-compatible'
+      (isHermesLocalAIProvider(provider)
         ? 'http://127.0.0.1:8642'
-        : 'http://127.0.0.1:11434');
+        : provider === 'openai-compatible'
+          ? 'http://127.0.0.1:1234'
+          : 'http://127.0.0.1:11434');
 
     try {
       const models = await listLocalAIModels({
@@ -964,8 +1070,10 @@ export function LocalAIModal({
         });
         Alert.alert(
           'IA local',
-          provider === 'openai-compatible'
+          isHermesLocalAIProvider(provider)
             ? 'A API respondeu, mas não anunciou modelos. Confirme a configuração do Hermes/Omega.'
+            : isOpenAICompatibleLocalAIProvider(provider)
+              ? 'A API respondeu, mas não anunciou modelos. Confirme o servidor compatível.'
             : 'Encontrei o Ollama, mas ainda não há modelos instalados. Instale um modelo local e volte a tentar.',
         );
         return;
@@ -1074,6 +1182,7 @@ export function LocalAIModal({
         content: response.answer,
         references: response.references,
         editInstruction: response.editInstruction || undefined,
+        ideActions: response.ideActions,
       };
       const nextChatMessages = [...nextMessages, assistantMessage];
       const nextMemory = createLocalAIWorkspaceMemorySnapshot(
@@ -1433,6 +1542,134 @@ export function LocalAIModal({
     [content, selectedText, selectionEnd, selectionStart],
   );
 
+  const handleRunIdeAction = useCallback(
+    async (action: LocalAIIdeAction) => {
+      if (action.type === 'open-file') {
+        await handleOpenReference(action);
+        return;
+      }
+
+      if (action.type === 'search-project') {
+        onOpenProjectSearch?.(action.query);
+        handleClose();
+        return;
+      }
+
+      if (action.type === 'show-terminal') {
+        onShowTerminal?.();
+        handleClose();
+        return;
+      }
+
+      if (action.type === 'create-file') {
+        const targetUri = createWorkspaceChildUri(
+          rootDirectoryUri,
+          action.relativePath,
+        );
+
+        if (!targetUri) {
+          Alert.alert('Hermes no IDE', 'O caminho sugerido não é válido.');
+          return;
+        }
+
+        try {
+          if (await fileExists(targetUri)) {
+            Alert.alert(
+              'Hermes no IDE',
+              'Esse ficheiro já existe. Abri-lo primeiro evita sobrescrever trabalho teu.',
+            );
+            await onOpenReference(targetUri, 1, 1);
+            handleClose();
+            return;
+          }
+
+          await writeFileContent(targetUri, action.content);
+          if (action.open !== false) {
+            await onOpenReference(targetUri, 1, 1);
+          }
+          handleClose();
+          Alert.alert('Hermes no IDE', `Ficheiro criado: ${action.relativePath}`);
+        } catch (error) {
+          Alert.alert(
+            'Hermes no IDE',
+            error instanceof Error
+              ? error.message
+              : 'Não foi possível criar o ficheiro sugerido.',
+          );
+        }
+        return;
+      }
+
+      const targetScope =
+        action.type === 'replace-current-file'
+          ? 'file'
+          : action.type === 'replace-current-selection'
+            ? 'selection'
+            : 'cursor';
+
+      if (targetScope === 'selection' && !selectedText.trim()) {
+        Alert.alert(
+          'Hermes no IDE',
+          'Esta ação precisa de uma seleção no editor. Seleciona o trecho e pede novamente.',
+        );
+        return;
+      }
+
+      const nextProposal: LocalAIEditProposal = {
+        title: action.title ?? 'Ação Hermes',
+        summary:
+          action.summary ??
+          'O Hermes preparou uma alteração revisável para aplicares dentro do IDE.',
+        replacement: action.replacement,
+        targetScope,
+      };
+
+      setMode('actions');
+      setInstruction(nextProposal.summary);
+      setExplanation(null);
+      setProposal(nextProposal);
+
+      if (targetScope === 'file') {
+        setProposalSource({
+          start: 0,
+          end: content.length,
+          text: content,
+          targetScope,
+        });
+        return;
+      }
+
+      if (targetScope === 'cursor') {
+        setProposalSource({
+          start: selectionStart,
+          end: selectionStart,
+          text: '',
+          targetScope,
+        });
+        return;
+      }
+
+      setProposalSource({
+        start: selectionStart,
+        end: selectionEnd,
+        text: selectedText,
+        targetScope,
+      });
+    },
+    [
+      content,
+      handleClose,
+      handleOpenReference,
+      onOpenProjectSearch,
+      onOpenReference,
+      onShowTerminal,
+      rootDirectoryUri,
+      selectedText,
+      selectionEnd,
+      selectionStart,
+    ],
+  );
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <View style={styles.overlay}>
@@ -1509,7 +1746,11 @@ export function LocalAIModal({
                 <Text style={styles.disabledTitle}>Configuração necessária</Text>
                 <Text style={styles.helper}>
                   Ative a IA local nas definições e informe o endereço do provedor
-                  {provider === 'openai-compatible' ? ' Hermes/Omega' : ' Ollama'} e o modelo instalado.
+                  {provider === 'hermes'
+                    ? ' Hermes/Omega'
+                    : provider === 'openai-compatible'
+                      ? ' compatível'
+                      : ' Ollama'} e o modelo instalado.
                 </Text>
                 {isDesktopRuntime() ? (
                   <Pressable
@@ -1909,6 +2150,7 @@ export function LocalAIModal({
                         onOpenReference={handleOpenReference}
                         onCreateProposal={handleCreateProposalFromChat}
                         onUseAssistantCode={handleUseAssistantCode}
+                        onRunIdeAction={handleRunIdeAction}
                       styles={styles}
                     />
                   ))

@@ -2,11 +2,11 @@
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, agora focado exclusivamente em desktop.
 
-**Versão atual:** `1.0.6` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
+**Versão atual:** `1.0.7` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
 
 ## Estado atual
 
-- **Pronto no núcleo:** edição multi-linguagem, bancada desktop com paleta de comandos, quick open (`Ctrl+P`), abas reordenáveis, multi-janela, breadcrumbs e atalhos visíveis, gestão local de ficheiros, árvore de projeto com criação/renomeação/eliminação, pesquisa e substituição globais no workspace com pré-visualização, seleção por ficheiro/linha e inspeção direta no editor, IA local via Ollama com chat contextual, explicações e propostas de alteração revisáveis, execução Python real por backend autenticado, sync cloud manual do workspace, partilha de ficheiros com papéis de leitor/editor, restauração de sessão, syntax highlighting básico, templates, sugestões, preview HTML/CSS e preferências locais.
+- **Pronto no núcleo:** edição multi-linguagem, bancada desktop com paleta de comandos, quick open (`Ctrl+P`), abas reordenáveis, multi-janela, breadcrumbs e atalhos visíveis, gestão local de ficheiros, árvore de projeto com criação/renomeação/eliminação, pesquisa e substituição globais no workspace com pré-visualização, seleção por ficheiro/linha e inspeção direta no editor, IA local via Ollama ou Hermes nativo com chat contextual, ações de IDE revisáveis, explicações e propostas de alteração, execução Python real por backend autenticado, sync cloud manual do workspace, partilha de ficheiros com papéis de leitor/editor, restauração de sessão, syntax highlighting básico, templates, sugestões, preview HTML/CSS e preferências locais.
 - **Ainda fora da experiência principal:** colaboração em tempo real caractere-a-caractere, resolução visual avançada de conflitos e publicação pronta de infraestrutura. A base funcional já existe, mas estas camadas ainda pedem hardening antes de serem tratadas como produto final.
 - **Critério de qualidade da sprint atual:** `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm build:web` e `pnpm desktop:make` precisam passar antes de considerar o app estável.
 
@@ -26,11 +26,12 @@ pnpm desktop:make
 O assistente de código funciona contra um provedor local configurado pelo utilizador. Hoje suporta:
 
 - **Ollama:** padrão simples para modelos coder locais em `http://127.0.0.1:11434`.
-- **Hermes/Omega ou outra API OpenAI-compatible:** ideal para usar `W:\hermes-agent-main` como motor externo de agente, normalmente em `http://127.0.0.1:8642`.
+- **Hermes/Omega nativo:** ideal para usar `W:\hermes-agent-main` como motor externo de agente, normalmente em `http://127.0.0.1:8642`.
+- **Outra API OpenAI-compatible:** útil para servidores locais que expõem `/v1/chat/completions` e `/v1/models`.
 
 No editor, o botão **IA local** abre um centro com:
 
-- **Chat:** usa o ficheiro atual, a seleção, os ficheiros abertos, um mapa leve do workspace, alguns trechos recuperados localmente por pergunta e memória local por workspace; pode devolver referências navegáveis e transformar uma sugestão numa proposta revisável. Ficheiros muito grandes são truncados de forma explícita antes de irem para o modelo local, para preservar resposta e desempenho.
+- **Chat:** usa o ficheiro atual, a seleção, os ficheiros abertos, um mapa leve do workspace, alguns trechos recuperados localmente por pergunta e memória local por workspace; pode devolver referências navegáveis, ações Hermes dentro do IDE e transformar uma sugestão numa proposta revisável. Ficheiros muito grandes são truncados de forma explícita antes de irem para o modelo local, para preservar resposta e desempenho.
 - **Ações:** explica código ou propõe uma substituição revisável para a seleção atual.
 - **Memória:** permite ver, criar, editar e apagar notas locais do workspace que devam sobreviver entre sessões; sugestões novas da IA só entram depois da tua aprovação e podem guardar evidências navegáveis para explicar porque cada facto ficou na memória. O app revalida essas evidências, distingue notas confirmadas/parciais/manuais/desatualizadas e exclui do contexto do chat o que ficou sem base válida.
 
@@ -42,13 +43,14 @@ O projeto `W:\hermes-agent-main` não deve ser colado diretamente dentro do WGF 
 - **Hermes/Omega:** motor externo de agente, ferramentas, memória profunda, automações e execução por gateway/API.
 - **Ponte recomendada:** iniciar o Hermes no WSL2 ou noutro ambiente suportado e conectar o WGF Note a ele por API OpenAI-compatible (`/v1/chat/completions`, `/v1/responses` ou `/v1/runs`) ou ACP, mantendo os dois projetos atualizáveis separadamente.
 
-Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes/Omega**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. O ecrã de definições mostra um diagnóstico de ligação e aceita respostas agentic em texto cru no chat quando o servidor não devolve JSON perfeito. O chat também reconhece blocos de código em Markdown e permite transformá-los numa proposta aplicável no cursor/seleção; propostas estruturadas podem ainda marcar o alvo como seleção, cursor ou ficheiro inteiro. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
+Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes nativo**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. O ecrã de definições mostra diagnóstico de `/health/detailed`, modelos e guia de ligação. O chat aceita respostas agentic em texto cru quando o servidor não devolve JSON perfeito, reconhece blocos de código em Markdown e agora também entende `ideActions` para abrir ficheiros, pesquisar no projeto, mostrar terminal, preparar inserção/substituição e criar ficheiros no workspace. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
 
 Configuração típica no Hermes/Omega:
 
 ```bash
 API_SERVER_ENABLED=true
 API_SERVER_PORT=8642
+API_SERVER_KEY=opcional_para_sessao
 omega gateway start
 ```
 

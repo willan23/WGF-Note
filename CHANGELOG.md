@@ -2,6 +2,21 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.7] - 2026-05-19
+
+### Adicionado
+
+- Provedor **Hermes nativo** separado de APIs OpenAI-compatible genéricas.
+- Contrato `ideActions` no chat da IA local para transformar respostas do Hermes em ações revisáveis dentro do IDE: abrir ficheiro, pesquisar no projeto, mostrar terminal, preparar inserção/substituição, reescrever ficheiro e criar ficheiro no workspace.
+- Sessão Hermes estável por workspace quando `API_SERVER_KEY`/chave API estiver configurada, usando `X-Omega-Session-Id`.
+- Diagnóstico Hermes por `/health/detailed`, com fallback para `/health`, também protegido pela ponte Electron para evitar CORS.
+- Pesquisa lateral do workspace agora pode receber uma query inicial vinda da IA.
+
+### Segurança/UX
+
+- Ações destrutivas do Hermes não são aplicadas automaticamente: alterações viram proposta revisável e criação de ficheiro recusa sobrescrever ficheiros existentes.
+- Ações com caminhos inseguros ou referências fora do mapa do workspace são descartadas localmente.
+
 ## [1.0.6] - 2026-05-19
 
 ### Adicionado
