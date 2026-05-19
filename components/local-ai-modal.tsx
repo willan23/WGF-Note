@@ -25,6 +25,7 @@ import {
   clearLocalAIWorkspaceMemory,
   createEmptyLocalAIWorkspaceMemory,
   createLocalAIWorkspaceMemorySnapshot,
+  createResolvedProblemMemoryNote,
   inspectWorkspaceMemoryNotes,
   loadLocalAIWorkspaceMemory,
   removeStaleWorkspaceMemoryNotes,
@@ -84,7 +85,7 @@ interface LocalAIModalProps {
   onApplyProposal: (
     proposal: LocalAIEditProposal,
     source: { start: number; end: number; text: string },
-  ) => void;
+  ) => boolean | Promise<boolean>;
   onOpenReference: (path: string, line?: number, column?: number) => void | Promise<void>;
   onOpenProjectSearch?: (query: string) => void;
   onShowTerminal?: () => void;
@@ -1346,6 +1347,69 @@ export function LocalAIModal({
     [],
   );
 
+  const rememberResolvedProposal = useCallback(
+    (
+      nextProposal: LocalAIEditProposal,
+      source: {
+        targetScope: LocalAIEditTargetScope;
+      },
+    ) => {
+      const requestContext = instruction.trim();
+      const learningSummary = requestContext
+        ? `${requestContext} → ${nextProposal.summary || nextProposal.title}`
+        : nextProposal.summary || nextProposal.title;
+      const note = createResolvedProblemMemoryNote({
+        fileName,
+        summary: learningSummary,
+        targetScope: source.targetScope,
+        evidences: currentFileMemoryEvidence,
+      });
+      if (!note) return;
+
+      persistWorkspaceMemory(addWorkspaceMemoryNote(workspaceMemory, note));
+      setMemoryInspectionRevision((revision) => revision + 1);
+    },
+    [
+      currentFileMemoryEvidence,
+      fileName,
+      instruction,
+      persistWorkspaceMemory,
+      workspaceMemory,
+    ],
+  );
+
+  const rememberCreatedFile = useCallback(
+    (relativePath: string) => {
+      const fileNameFromPath = relativePath.split('/').pop() ?? relativePath;
+      const note = createResolvedProblemMemoryNote({
+        fileName: fileNameFromPath,
+        summary: `Criar ${relativePath} com conteúdo sugerido pelo Hermes`,
+        targetScope: 'file',
+        evidences: [
+          {
+            relativePath,
+            line: 1,
+            label: 'Ficheiro criado pelo Hermes',
+          },
+        ],
+      });
+      if (!note) return;
+
+      persistWorkspaceMemory(addWorkspaceMemoryNote(workspaceMemory, note));
+      setMemoryInspectionRevision((revision) => revision + 1);
+    },
+    [persistWorkspaceMemory, workspaceMemory],
+  );
+
+  const handleApplyCurrentProposal = useCallback(async () => {
+    if (!proposal || !proposalSource) return;
+
+    const applied = await onApplyProposal(proposal, proposalSource);
+    if (applied) {
+      rememberResolvedProposal(proposal, proposalSource);
+    }
+  }, [onApplyProposal, proposal, proposalSource, rememberResolvedProposal]);
+
   const handleReinspectWorkspaceMemory = useCallback(() => {
     setMemoryInspectionRevision((revision) => revision + 1);
   }, []);
@@ -1584,6 +1648,7 @@ export function LocalAIModal({
           }
 
           await writeFileContent(targetUri, action.content);
+          rememberCreatedFile(action.relativePath);
           if (action.open !== false) {
             await onOpenReference(targetUri, 1, 1);
           }
@@ -1663,6 +1728,7 @@ export function LocalAIModal({
       onOpenProjectSearch,
       onOpenReference,
       onShowTerminal,
+      rememberCreatedFile,
       rootDirectoryUri,
       selectedText,
       selectionEnd,
@@ -1874,11 +1940,7 @@ export function LocalAIModal({
                         accessibilityRole="button"
                         accessibilityLabel="Aplicar proposta"
                         style={[styles.actionButton, styles.primaryAction]}
-                        onPress={() => {
-                          if (proposalSource) {
-                            onApplyProposal(proposal, proposalSource);
-                          }
-                        }}
+                        onPress={() => void handleApplyCurrentProposal()}
                       >
                         <Text style={[styles.actionText, styles.primaryActionText]}>
                           Aplicar
@@ -1894,7 +1956,7 @@ export function LocalAIModal({
                   <View style={styles.memoryHeader}>
                     <Text style={styles.chatContextTitle}>Memória do workspace</Text>
                     <Text style={styles.helper}>
-                      Factos curtos que ajudam a IA a retomar decisões importantes nas próximas sessões.
+                      Factos curtos que ajudam a IA a retomar decisões importantes nas próximas sessões. Quando uma proposta da IA é aplicada com sucesso, o WGF Note também guarda uma lição de resolução com evidência local.
                     </Text>
                     <View style={styles.memorySummaryRow}>
                       <Text style={styles.memorySummaryText}>

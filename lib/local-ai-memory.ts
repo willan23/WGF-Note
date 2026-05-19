@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { LocalAIChatMessage, LocalAIChatReference } from './local-ai';
+import type {
+  LocalAIChatMessage,
+  LocalAIChatReference,
+  LocalAIEditTargetScope,
+} from './local-ai';
 
 export const LOCAL_AI_MEMORY_VERSION = 1;
 export const LOCAL_AI_MEMORY_STORAGE_PREFIX = 'local-ai-memory-v1:';
@@ -61,6 +65,20 @@ export interface LocalAIWorkspaceMemoryInspectionSummary {
   partial: number;
   stale: number;
 }
+
+export interface LocalAIResolvedProblemMemoryInput {
+  title?: string;
+  summary?: string;
+  fileName?: string;
+  targetScope?: LocalAIEditTargetScope;
+  evidences?: LocalAIChatReference[];
+}
+
+const targetScopeMemoryLabels: Record<LocalAIEditTargetScope, string> = {
+  selection: 'seleção',
+  cursor: 'cursor',
+  file: 'ficheiro inteiro',
+};
 
 function normalizeMemoryText(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
@@ -281,6 +299,25 @@ export function addWorkspaceMemoryNote(
     updatedAt,
     workspaceNotes: mergeWorkspaceMemoryNotes(memory.workspaceNotes, [note]),
   };
+}
+
+export function createResolvedProblemMemoryNote(
+  input: LocalAIResolvedProblemMemoryInput,
+): LocalAIWorkspaceMemoryNote | null {
+  const problemSummary = normalizeMemoryText(input.summary ?? input.title ?? '');
+  if (!problemSummary) return null;
+
+  const fileSegment = input.fileName?.trim() ? ` em ${input.fileName.trim()}` : '';
+  const scopeSegment = input.targetScope
+    ? `; alvo: ${targetScopeMemoryLabels[input.targetScope]}`
+    : '';
+  const trimmedSummary = problemSummary.replace(/[.!?]+$/, '');
+  const note = normalizeWorkspaceMemoryNote({
+    text: `Resolvido${fileSegment}: ${trimmedSummary}${scopeSegment}.`,
+    evidences: input.evidences ?? [],
+  });
+
+  return note;
 }
 
 export function updateWorkspaceMemoryNote(

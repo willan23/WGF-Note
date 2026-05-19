@@ -5,6 +5,7 @@ import {
   clearLocalAIWorkspaceMemory,
   createLocalAIWorkspaceMemorySnapshot,
   createEmptyLocalAIWorkspaceMemory,
+  createResolvedProblemMemoryNote,
   inspectWorkspaceMemoryNotes,
   loadLocalAIWorkspaceMemory,
   mergeWorkspaceMemoryNotes,
@@ -129,6 +130,20 @@ describe('local-ai-memory', () => {
       { text: 'Usa Expo Router e Metro.', evidences: [] },
     ]);
     expect(removed.workspaceNotes).toEqual([]);
+  });
+
+  it('cria nota de aprendizagem quando um problema é resolvido', () => {
+    expect(
+      createResolvedProblemMemoryNote({
+        fileName: 'main.py',
+        summary: 'Extrair validação repetida para helper.',
+        targetScope: 'selection',
+        evidences: [{ relativePath: 'main.py', line: 4, label: 'Correção aplicada' }],
+      }),
+    ).toEqual({
+      text: 'Resolvido em main.py: Extrair validação repetida para helper; alvo: seleção.',
+      evidences: [{ relativePath: 'main.py', line: 4, label: 'Correção aplicada' }],
+    });
   });
 
   it('preserva evidências ao editar uma nota existente', () => {

@@ -391,7 +391,7 @@ function EditorScreenContent() {
       proposal: LocalAIEditProposal,
       source: { start: number; end: number; text: string },
     ) => {
-      if (!state.currentFile) return;
+      if (!state.currentFile) return false;
 
       const currentTargetText = state.currentFile.content.slice(source.start, source.end);
 
@@ -400,7 +400,7 @@ function EditorScreenContent() {
           'IA local',
           'O conteúdo alvo mudou desde que a proposta foi gerada. Gere novamente antes de aplicar.',
         );
-        return;
+        return false;
       }
 
       const result = replaceSelection(
@@ -412,6 +412,7 @@ function EditorScreenContent() {
       updateFileContent(state.currentFile.id, result.content);
       selectRange(result.caret, result.caret);
       setShowLocalAIModal(false);
+      return true;
     },
     [
       selectRange,

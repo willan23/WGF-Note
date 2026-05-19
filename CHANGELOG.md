@@ -2,6 +2,17 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.8] - 2026-05-19
+
+### Adicionado
+
+- Aprendizagem por resolução: quando uma proposta da IA é aplicada com sucesso, o WGF Note guarda uma nota durável no workspace com o problema resolvido, alvo aplicado e evidência no ficheiro.
+- Criações de ficheiro via ações Hermes também geram uma lição local para as próximas conversas.
+
+### Segurança/UX
+
+- A memória só aprende depois de confirmação de aplicação bem-sucedida; propostas rejeitadas, obsoletas ou não aplicadas não entram como conhecimento.
+
 ## [1.0.7] - 2026-05-19
 
 ### Adicionado

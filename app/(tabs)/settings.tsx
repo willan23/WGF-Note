@@ -729,7 +729,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>WGF Note v1.0.7</Text>
+          <Text style={styles.footerText}>WGF Note v1.0.8</Text>
         </View>
       </ScrollView>
     </View>
