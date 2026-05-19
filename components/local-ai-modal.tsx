@@ -38,12 +38,15 @@ import type {
   LocalAIChatMessage,
   LocalAIChatReference,
   LocalAIEditProposal,
+  LocalAIEditTargetScope,
   LocalAIExplanation,
   LocalAIOpenFileSummary,
   LocalAIProjectSummary,
   LocalAIRetrievedSnippet,
 } from '@/lib/local-ai';
 import {
+  clipLocalAIContextValue,
+  extractLocalAICodeReplacement,
   retrieveRelevantWorkspaceSnippetsForLocalAI,
   listLocalAIModels,
   requestLocalAIChat,
@@ -80,6 +83,7 @@ interface ChatMessageRowProps {
   message: LocalAIChatMessage;
   onOpenReference: (reference: LocalAIChatReference) => void;
   onCreateProposal: (instruction: string) => void;
+  onUseAssistantCode: (content: string) => void;
   styles: ReturnType<typeof createStyles>;
 }
 
@@ -104,9 +108,11 @@ const ChatMessageRow = memo(function ChatMessageRow({
   message,
   onOpenReference,
   onCreateProposal,
+  onUseAssistantCode,
   styles,
 }: ChatMessageRowProps) {
   const isUser = message.role === 'user';
+  const hasCodeBlock = !isUser && /```[\s\S]*?```/.test(message.content);
 
   return (
     <View
@@ -145,9 +151,64 @@ const ChatMessageRow = memo(function ChatMessageRow({
           <Text style={styles.inlineChatActionText}>Gerar proposta</Text>
         </Pressable>
       ) : null}
+      {hasCodeBlock ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Usar código da resposta"
+          onPress={() => onUseAssistantCode(message.content)}
+          style={styles.inlineChatActionSecondary}
+        >
+          <Text style={styles.inlineChatActionSecondaryText}>Usar código</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 });
+
+const targetScopeLabels: Record<LocalAIEditTargetScope, string> = {
+  selection: 'Seleção atual',
+  cursor: 'Cursor atual',
+  file: 'Ficheiro inteiro',
+};
+
+function getProposalTargetScope(
+  proposal: LocalAIEditProposal,
+  selectedText: string,
+): LocalAIEditTargetScope {
+  if (proposal.targetScope === 'file') return 'file';
+  if (proposal.targetScope === 'selection') return 'selection';
+  if (proposal.targetScope === 'cursor') return 'cursor';
+
+  return selectedText.trim() ? 'selection' : 'cursor';
+}
+
+function createProposalSource(
+  proposal: LocalAIEditProposal,
+  source: {
+    content: string;
+    selectedText: string;
+    selectionStart: number;
+    selectionEnd: number;
+  },
+): { start: number; end: number; text: string; targetScope: LocalAIEditTargetScope } {
+  const targetScope = getProposalTargetScope(proposal, source.selectedText);
+
+  if (targetScope === 'file') {
+    return {
+      start: 0,
+      end: source.content.length,
+      text: source.content,
+      targetScope,
+    };
+  }
+
+  return {
+    start: source.selectionStart,
+    end: source.selectionEnd,
+    text: source.selectedText,
+    targetScope,
+  };
+}
 
 const MemoryEvidenceRow = memo(function MemoryEvidenceRow({
   evidences,
@@ -384,6 +445,11 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.foreground,
       fontSize: 13,
       lineHeight: 19,
+    },
+    proposalMeta: {
+      color: colors.muted,
+      fontSize: 12,
+      fontWeight: '700',
     },
     bullet: {
       color: colors.muted,
@@ -652,6 +718,21 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 12,
       fontWeight: '700',
     },
+    inlineChatActionSecondary: {
+      marginTop: 4,
+      alignSelf: 'flex-start',
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    inlineChatActionSecondaryText: {
+      color: colors.foreground,
+      fontSize: 12,
+      fontWeight: '700',
+    },
     chatInput: {
       minHeight: 78,
       textAlignVertical: 'top',
@@ -702,6 +783,7 @@ export function LocalAIModal({
     start: number;
     end: number;
     text: string;
+    targetScope: LocalAIEditTargetScope;
   } | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<LocalAIChatMessage[]>([]);
@@ -924,11 +1006,14 @@ export function LocalAIModal({
         context,
       );
       setProposal(nextProposal);
-      setProposalSource({
-        start: selectionStart,
-        end: selectionEnd,
-        text: selectedText,
-      });
+      setProposalSource(
+        createProposalSource(nextProposal, {
+          content,
+          selectedText,
+          selectionStart,
+          selectionEnd,
+        }),
+      );
     } catch (error) {
       Alert.alert(
         'IA local',
@@ -937,7 +1022,7 @@ export function LocalAIModal({
     } finally {
       setIsLoading(false);
     }
-  }, [aiConfig, context, selectedText, selectionEnd, selectionStart]);
+  }, [aiConfig, content, context, selectedText, selectionEnd, selectionStart]);
 
   const canPropose = canUseLocalAI && Boolean(instruction.trim());
   const canSendChat = canUseLocalAI && Boolean(chatInput.trim()) && !isChatLoading;
@@ -1287,11 +1372,14 @@ export function LocalAIModal({
           },
         );
         setProposal(nextProposal);
-        setProposalSource({
-          start: selectionStart,
-          end: selectionEnd,
-          text: selectedText,
-        });
+        setProposalSource(
+          createProposalSource(nextProposal, {
+            content,
+            selectedText,
+            selectionStart,
+            selectionEnd,
+          }),
+        );
       } catch (error) {
         Alert.alert(
           'IA local',
@@ -1311,6 +1399,38 @@ export function LocalAIModal({
       selectionEnd,
       selectionStart,
     ],
+  );
+
+  const handleUseAssistantCode = useCallback(
+    (assistantContent: string) => {
+      const replacement = extractLocalAICodeReplacement(assistantContent);
+      if (!replacement.trim()) {
+        Alert.alert('IA local', 'Não encontrei código aplicável nesta resposta.');
+        return;
+      }
+
+      const nextProposal: LocalAIEditProposal = {
+        title: 'Código da conversa',
+        summary:
+          'Proposta criada a partir da resposta da IA. Revê o alvo antes de aplicar.',
+        replacement,
+        targetScope: selectedText.trim() ? 'selection' : 'cursor',
+      };
+
+      setMode('actions');
+      setInstruction('Aplicar o código sugerido na conversa.');
+      setExplanation(null);
+      setProposal(nextProposal);
+      setProposalSource(
+        createProposalSource(nextProposal, {
+          content,
+          selectedText,
+          selectionStart,
+          selectionEnd,
+        }),
+      );
+    },
+    [content, selectedText, selectionEnd, selectionStart],
   );
 
   return (
@@ -1476,13 +1596,24 @@ export function LocalAIModal({
                   <View style={styles.responseCard}>
                     <Text style={styles.responseTitle}>{proposal.title}</Text>
                     <Text style={styles.responseText}>{proposal.summary}</Text>
+                    {proposalSource ? (
+                      <Text style={styles.proposalMeta}>
+                        Alvo: {targetScopeLabels[proposalSource.targetScope]}
+                      </Text>
+                    ) : null}
                     <View style={[styles.diffLine, styles.diffBefore]}>
                       <Text style={styles.diffLabel}>Antes</Text>
-                      <Text style={styles.diffText}>{proposalSource?.text || 'Sem seleção'}</Text>
+                      <Text style={styles.diffText}>
+                        {proposalSource?.text
+                          ? clipLocalAIContextValue(proposalSource.text, 3000)
+                          : 'Inserção no cursor'}
+                      </Text>
                     </View>
                     <View style={[styles.diffLine, styles.diffAfter]}>
                       <Text style={styles.diffLabel}>Depois</Text>
-                      <Text style={styles.diffText}>{proposal.replacement}</Text>
+                      <Text style={styles.diffText}>
+                        {clipLocalAIContextValue(proposal.replacement, 3000)}
+                      </Text>
                     </View>
                     <View style={styles.applyRow}>
                       <Pressable
@@ -1776,7 +1907,8 @@ export function LocalAIModal({
                         key={`${message.role}-${index}-${message.content}`}
                         message={message}
                         onOpenReference={handleOpenReference}
-                      onCreateProposal={handleCreateProposalFromChat}
+                        onCreateProposal={handleCreateProposalFromChat}
+                        onUseAssistantCode={handleUseAssistantCode}
                       styles={styles}
                     />
                   ))

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildLocalAIChatContextBlock,
   clipLocalAIContextValue,
+  extractLocalAICodeReplacement,
   extractLocalAIRetrievalTerms,
   getOpenAICompatibleChatUrl,
   getOpenAICompatibleModelsUrl,
@@ -265,7 +266,93 @@ describe('local-ai', () => {
       title: 'Melhorar nome',
       summary: 'Usa um nome mais claro.',
       replacement: 'user_name = "Ana"',
+      targetScope: 'selection',
     });
+  });
+
+  it('aceita proposta para reescrever ficheiro inteiro quando o modelo marca targetScope=file', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          message: {
+            content: JSON.stringify({
+              title: 'Corrigir ficheiro',
+              summary: 'Reescreve o ficheiro com uma função válida.',
+              replacement: 'def main():\n    print("ok")\n',
+              targetScope: 'file',
+            }),
+          },
+        }),
+      })),
+    );
+
+    await expect(
+      requestLocalAIEditProposal(
+        { baseUrl: 'http://localhost:11434', model: 'qwen' },
+        {
+          language: 'python',
+          fileName: 'main.py',
+          fullContent: 'print(',
+          selectedText: '',
+          instruction: 'corrige o ficheiro inteiro',
+        },
+      ),
+    ).resolves.toEqual({
+      title: 'Corrigir ficheiro',
+      summary: 'Reescreve o ficheiro com uma função válida.',
+      replacement: 'def main():\n    print("ok")\n',
+      targetScope: 'file',
+    });
+  });
+
+  it('transforma resposta textual OpenAI-compatible em proposta aplicável', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: '```python\ndef ola():\n    return "olá"\n```',
+              },
+            },
+          ],
+        }),
+      })),
+    );
+
+    await expect(
+      requestLocalAIEditProposal(
+        {
+          provider: 'openai-compatible',
+          baseUrl: 'http://localhost:8642',
+          model: 'omega-supreme',
+        },
+        {
+          language: 'python',
+          fileName: 'main.py',
+          fullContent: '',
+          selectedText: '',
+          instruction: 'cria uma função',
+        },
+      ),
+    ).resolves.toEqual({
+      title: 'Código da IA',
+      summary:
+        'A resposta veio em texto cru; transformei-a numa proposta aplicável para poderes rever antes de alterar o ficheiro.',
+      replacement: 'def ola():\n    return "olá"',
+      targetScope: 'cursor',
+    });
+  });
+
+  it('extrai o primeiro bloco de código de respostas em markdown', () => {
+    expect(
+      extractLocalAICodeReplacement('Aqui está:\n```ts\nexport const ok = true;\n```\nFim.'),
+    ).toBe('export const ok = true;');
+    expect(extractLocalAICodeReplacement('const value = 1;')).toBe('const value = 1;');
   });
 
   it('resume apenas ficheiros suportados do workspace e respeita o limite', async () => {

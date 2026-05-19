@@ -2,6 +2,19 @@
 
 Todas as alterações relevantes deste projeto serão documentadas aqui.
 
+## [1.0.6] - 2026-05-19
+
+### Adicionado
+
+- Propostas da IA local agora distinguem alvo de aplicação: seleção, cursor ou ficheiro inteiro.
+- Respostas OpenAI-compatible/Hermes em texto cru com bloco de código podem virar proposta aplicável sem exigir JSON perfeito.
+- Botão **Usar código** no chat quando a IA devolve um bloco de código em Markdown.
+
+### Corrigido
+
+- Aplicação de propostas da IA valida o conteúdo alvo original, em vez de depender da seleção continuar exatamente no mesmo lugar.
+- Preview de proposta limita textos muito grandes para evitar congelar o modal ao rever ficheiros longos.
+
 ## [1.0.5] - 2026-05-18
 
 ### Adicionado

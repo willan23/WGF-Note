@@ -49,6 +49,7 @@ import {
   type ShortcutAction,
 } from "@/lib/keyboard-shortcuts";
 import { getDesktopBridge } from "@/lib/desktop-bridge";
+import type { LocalAIEditProposal } from "@/lib/local-ai";
 
 type SidebarMode = 'explorer' | 'search';
 type ProjectSearchSeed = {
@@ -361,32 +362,25 @@ function EditorScreenContent() {
 
   const handleApplyAIProposal = useCallback(
     (
-      proposal: { replacement: string },
+      proposal: LocalAIEditProposal,
       source: { start: number; end: number; text: string },
     ) => {
       if (!state.currentFile) return;
 
-      const currentSelectedText = state.currentFile.content.slice(
-        state.selectionStart,
-        state.selectionEnd,
-      );
+      const currentTargetText = state.currentFile.content.slice(source.start, source.end);
 
-      if (
-        source.start !== state.selectionStart ||
-        source.end !== state.selectionEnd ||
-        source.text !== currentSelectedText
-      ) {
+      if (source.text !== currentTargetText) {
         Alert.alert(
           'IA local',
-          'A seleção mudou desde que a proposta foi gerada. Gere novamente antes de aplicar.',
+          'O conteúdo alvo mudou desde que a proposta foi gerada. Gere novamente antes de aplicar.',
         );
         return;
       }
 
       const result = replaceSelection(
         state.currentFile.content,
-        state.selectionStart,
-        state.selectionEnd,
+        source.start,
+        source.end,
         proposal.replacement,
       );
       updateFileContent(state.currentFile.id, result.content);
@@ -396,8 +390,6 @@ function EditorScreenContent() {
     [
       selectRange,
       state.currentFile,
-      state.selectionEnd,
-      state.selectionStart,
       updateFileContent,
     ],
   );

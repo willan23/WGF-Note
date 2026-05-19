@@ -30,7 +30,10 @@ export interface LocalAIEditProposal {
   title: string;
   summary: string;
   replacement: string;
+  targetScope?: LocalAIEditTargetScope;
 }
+
+export type LocalAIEditTargetScope = 'selection' | 'cursor' | 'file';
 
 export interface LocalAIProjectFileSummary {
   path: string;
@@ -164,6 +167,10 @@ const editProposalSchema = {
     title: { type: 'string' },
     summary: { type: 'string' },
     replacement: { type: 'string' },
+    targetScope: {
+      type: 'string',
+      enum: ['selection', 'cursor', 'file'],
+    },
   },
   required: ['title', 'summary', 'replacement'],
 } as const;
@@ -503,6 +510,52 @@ function parseStructuredContent<T>(content: string | undefined): T {
       throw new Error('A IA local devolveu uma resposta inválida.');
     }
   }
+}
+
+export function extractLocalAICodeReplacement(content: string): string {
+  const fencedBlock = content.match(/```(?:[a-z0-9_+#.-]+)?\s*\n?([\s\S]*?)```/i);
+  const replacement = fencedBlock?.[1] ?? content;
+
+  return replacement.trim();
+}
+
+function isLocalAIEditTargetScope(value: unknown): value is LocalAIEditTargetScope {
+  return value === 'selection' || value === 'cursor' || value === 'file';
+}
+
+function sanitizeLocalAIEditProposal(
+  proposal: LocalAIEditProposal,
+  context: LocalAIContext,
+): LocalAIEditProposal {
+  if (!proposal.replacement.trim()) {
+    throw new Error('A IA local não devolveu código para aplicar.');
+  }
+
+  return {
+    title: proposal.title?.trim() || 'Proposta da IA',
+    summary: proposal.summary?.trim() || 'Alteração sugerida pela IA local.',
+    replacement: proposal.replacement,
+    ...(isLocalAIEditTargetScope(proposal.targetScope)
+      ? { targetScope: proposal.targetScope }
+      : context.selectedText.trim()
+        ? { targetScope: 'selection' as const }
+        : {}),
+  };
+}
+
+function createPlainEditProposal(content: string, context: LocalAIContext): LocalAIEditProposal {
+  const replacement = extractLocalAICodeReplacement(content);
+  if (!replacement) {
+    throw new Error('A IA local não devolveu código para aplicar.');
+  }
+
+  return {
+    title: 'Código da IA',
+    summary:
+      'A resposta veio em texto cru; transformei-a numa proposta aplicável para poderes rever antes de alterar o ficheiro.',
+    replacement,
+    targetScope: context.selectedText.trim() ? 'selection' : 'cursor',
+  };
 }
 
 export function clipLocalAIContextValue(value: string, maxLength: number): string {
@@ -882,7 +935,7 @@ export async function requestLocalAIEditProposal(
         {
           role: 'system',
           content:
-            'És um assistente de programação. Mantém a linguagem e devolve somente JSON válido segundo o schema pedido. Se existir seleção, replacement deve substituir apenas a seleção. Se não existir seleção, replacement deve ser código pronto para inserir no cursor atual e satisfazer o pedido sem reescrever desnecessariamente o ficheiro inteiro.',
+            'És um assistente de programação. Mantém a linguagem e devolve somente JSON válido segundo o schema pedido. replacement deve conter apenas o código/texto final a aplicar. Usa targetScope="selection" quando a alteração substitui a seleção, targetScope="cursor" quando deve inserir código no cursor e targetScope="file" apenas quando o pedido exigir reescrever/corrigir/refatorar o ficheiro inteiro. Se existir seleção, prefere substituir apenas a seleção. Se não existir seleção, prefere inserir no cursor e evita reescrever desnecessariamente o ficheiro inteiro.',
         },
         {
           role: 'user',
@@ -893,7 +946,18 @@ export async function requestLocalAIEditProposal(
     ],
     editProposalSchema,
   );
-  return parseStructuredContent<LocalAIEditProposal>(content);
+  try {
+    return sanitizeLocalAIEditProposal(
+      parseStructuredContent<LocalAIEditProposal>(content),
+      context,
+    );
+  } catch (error) {
+    if (getLocalAIProvider(config) === 'openai-compatible' && content?.trim()) {
+      return createPlainEditProposal(content, context);
+    }
+
+    throw error;
+  }
 }
 
 export async function summarizeWorkspaceForLocalAI(

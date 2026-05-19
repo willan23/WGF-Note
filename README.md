@@ -2,7 +2,7 @@
 
 Editor local-first para Python, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, SQL, Java, C, C++, C# e texto simples, agora focado exclusivamente em desktop.
 
-**Versão atual:** `1.0.5` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
+**Versão atual:** `1.0.6` · consulte também o `CHANGELOG.md` e a `RELEASE_CHECKLIST.md`.
 
 ## Estado atual
 
@@ -42,7 +42,7 @@ O projeto `W:\hermes-agent-main` não deve ser colado diretamente dentro do WGF 
 - **Hermes/Omega:** motor externo de agente, ferramentas, memória profunda, automações e execução por gateway/API.
 - **Ponte recomendada:** iniciar o Hermes no WSL2 ou noutro ambiente suportado e conectar o WGF Note a ele por API OpenAI-compatible (`/v1/chat/completions`, `/v1/responses` ou `/v1/runs`) ou ACP, mantendo os dois projetos atualizáveis separadamente.
 
-Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes/Omega**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. O ecrã de definições mostra um diagnóstico de ligação e aceita respostas agentic em texto cru no chat quando o servidor não devolve JSON perfeito. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
+Isto já começou no app: em **Definições → IA local / agente**, escolha **Hermes/Omega**, use `http://127.0.0.1:8642` e modelo `omega-supreme`. O ecrã de definições mostra um diagnóstico de ligação e aceita respostas agentic em texto cru no chat quando o servidor não devolve JSON perfeito. O chat também reconhece blocos de código em Markdown e permite transformá-los numa proposta aplicável no cursor/seleção; propostas estruturadas podem ainda marcar o alvo como seleção, cursor ou ficheiro inteiro. No Windows nativo, o próprio Hermes recomenda WSL2; por isso a integração é sidecar/serviço, não importação direta de código Python.
 
 Configuração típica no Hermes/Omega:
 
