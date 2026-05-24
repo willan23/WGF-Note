@@ -21,12 +21,42 @@ function isWholeWordMatch(content: string, start: number, end: number): boolean 
   return !isWordCharacter(content[start - 1]) && !isWordCharacter(content[end]);
 }
 
+// Cache de resultados de busca para consultas repetidas
+const searchCache = new Map<string, SearchMatch[]>();
+const CACHE_MAX_SIZE = 500;
+
+function getCacheKey(content: string, query: string, options: SearchOptions): string {
+  return `${content.length}:${query}:${options.caseSensitive}:${options.wholeWord}`;
+}
+
+function cacheResults(key: string, matches: SearchMatch[]): void {
+  if (searchCache.size >= CACHE_MAX_SIZE) {
+    // Remove o primeiro item (LRU simples)
+    const firstKey = searchCache.keys().next().value;
+    if (firstKey) {
+      searchCache.delete(firstKey);
+    }
+  }
+  searchCache.set(key, matches);
+}
+
+export function clearSearchCache(): void {
+  searchCache.clear();
+}
+
 export function findMatches(
   content: string,
   query: string,
   options: SearchOptions = defaultOptions,
 ): SearchMatch[] {
   if (!query) return [];
+
+  // Tentar usar cache primeiro
+  const cacheKey = getCacheKey(content, query, options);
+  const cached = searchCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
   const haystack = options.caseSensitive ? content : content.toLocaleLowerCase();
   const needle = options.caseSensitive ? query : query.toLocaleLowerCase();
@@ -44,6 +74,9 @@ export function findMatches(
 
     searchFrom = Math.max(end, start + 1);
   }
+
+  // Cache dos resultados
+  cacheResults(cacheKey, matches);
 
   return matches;
 }

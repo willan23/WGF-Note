@@ -13,7 +13,11 @@
       "@shared/*": [
         "./shared/*"
       ]
-    }
+    },
+    "incremental": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true
   },
   "include": [
     "**/*.ts",

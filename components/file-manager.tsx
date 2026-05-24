@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import {
   Alert,
   FlatList,
@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   View,
+  type ListRenderItemInfo,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import {
@@ -29,6 +30,7 @@ import {
   type RecentFile,
 } from '@/lib/recent-files-manager';
 import { useEditor } from '@/lib/editor-context';
+import { useDebounce } from '@/lib/performance-hooks';
 
 interface FileManagerProps {
   visible: boolean;
@@ -38,6 +40,79 @@ interface FileManagerProps {
 
 type TabType = 'all' | 'recent';
 type CreateMode = 'file' | 'folder' | null;
+
+// Componentes memoizados para itens da lista
+const FileListItem = memo(({ item, onPress, onRename, onDelete, colors }: { 
+  item: FileInfo; 
+  onPress: (item: FileInfo) => void;
+  onRename: (item: FileInfo) => void;
+  onDelete: (item: FileInfo) => void;
+  colors: ReturnType<typeof useColors>;
+}) => {
+  const isDir = item.isDirectory;
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.fileItem,
+        { backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 },
+      ]}
+      onPress={() => onPress(item)}
+    >
+      <Text style={[styles.fileIcon, { color: isDir ? colors.warning : colors.primary }]}>
+        {isDir ? '📁' : '📄'}
+      </Text>
+      <View style={styles.fileInfo}>
+        <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={[styles.fileMeta, { color: colors.muted }]} numberOfLines={1}>
+          {isDir ? 'Pasta' : `${(item.size / 1024).toFixed(1)} KB`}
+        </Text>
+      </View>
+      <View style={styles.fileActions}>
+        <Pressable style={styles.actionButton} onPress={() => onRename(item)}>
+          <Text style={styles.actionText}>✏️</Text>
+        </Pressable>
+        <Pressable style={styles.actionButton} onPress={() => onDelete(item)}>
+          <Text style={styles.actionText}>🗑️</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}, (prev, next) => {
+  // Custom comparison para evitar re-renders desnecessários
+  return prev.item.uri === next.item.uri && 
+         prev.item.name === next.item.name && 
+         prev.item.size === next.item.size;
+});
+
+const RecentFileListItem = memo(({ item, onPress, colors }: { 
+  item: RecentFile; 
+  onPress: (item: RecentFile) => void;
+  colors: ReturnType<typeof useColors>;
+}) => {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.fileItem,
+        { backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 },
+      ]}
+      onPress={() => onPress(item)}
+    >
+      <Text style={[styles.fileIcon, { color: colors.success }]}>📄</Text>
+      <View style={styles.fileInfo}>
+        <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>
+          {item.path.split('/').pop() || item.path}
+        </Text>
+        <Text style={[styles.fileMeta, { color: colors.muted }]} numberOfLines={1}>
+          {item.path}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}, (prev, next) => {
+  return prev.item.path === next.item.path;
+});
 
 export function FileManager({
   visible,
@@ -384,48 +459,27 @@ export function FileManager({
     ],
   );
 
-  const renderFileItem = ({ item }: { item: FileInfo }) => {
-    const date = item.modificationTime
-      ? new Date(item.modificationTime).toLocaleDateString('pt-PT')
-      : 'N/A';
+  // Usar componentes memoizados em vez de funções inline
+  const renderFileItem = useCallback(({ item }: { item: FileInfo }) => (
+    <FileListItem 
+      item={item} 
+      onPress={handleSelectFile}
+      onRename={(file) => {
+        setRenamingItem(file);
+        setRenameValue(file.name);
+      }}
+      onDelete={handleDeleteFile}
+      colors={colors}
+    />
+  ), [handleSelectFile, handleDeleteFile, colors]);
 
-    return (
-      <Pressable style={styles.fileItem} onPress={() => handleSelectFile(item)}>
-        <View style={styles.fileInfo}>
-          <Text style={styles.fileName}>{item.isDirectory ? `📁 ${item.name}` : item.name}</Text>
-          <Text style={styles.fileDetails}>
-            {item.isDirectory ? 'Pasta' : `${(item.size / 1024).toFixed(1)} KB`} • {date}
-          </Text>
-        </View>
-        <View style={styles.fileActions}>
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => {
-              setRenamingItem(item);
-              setRenameValue(item.name);
-            }}
-          >
-            <Text style={styles.actionText}>✏️</Text>
-          </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => handleDeleteFile(item)}>
-            <Text style={styles.actionText}>🗑️</Text>
-          </Pressable>
-        </View>
-      </Pressable>
-    );
-  };
-
-  const renderRecentItem = ({ item }: { item: RecentFile }) => (
-    <Pressable style={styles.fileItem} onPress={() => handleSelectRecentFile(item)}>
-      <View style={styles.fileInfo}>
-        <Text style={styles.fileName}>{item.name}</Text>
-        <Text style={styles.fileDetails}>
-          {(item.language ?? 'ficheiro').toUpperCase()} •{' '}
-          {new Date(item.lastOpened).toLocaleDateString('pt-PT')}
-        </Text>
-      </View>
-    </Pressable>
-  );
+  const renderRecentItem = useCallback(({ item }: { item: RecentFile }) => (
+    <RecentFileListItem 
+      item={item} 
+      onPress={handleSelectRecentFile}
+      colors={colors}
+    />
+  ), [handleSelectRecentFile, colors]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

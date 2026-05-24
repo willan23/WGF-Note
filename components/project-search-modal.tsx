@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   View,
+  type ListRenderItemInfo,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
@@ -22,6 +23,7 @@ import {
   type WorkspaceReplacementPlanItem,
   type WorkspaceSearchResult,
 } from '@/lib/workspace-search';
+import { useDebounce } from '@/lib/performance-hooks';
 
 interface ProjectSearchModalProps {
   visible: boolean;
@@ -593,6 +595,9 @@ export function ProjectSearchModal({
   const [pendingPlan, setPendingPlan] = useState<WorkspaceReplacementPlanItem[] | null>(null);
   const [selectedChangeIds, setSelectedChangeIds] = useState<string[]>([]);
 
+  // Debounce da query para evitar buscas excessivas durante digitação
+  const debouncedQuery = useDebounce(query, 300);
+
   useEffect(() => {
     if (!visible) return;
 
@@ -629,7 +634,8 @@ export function ProjectSearchModal({
   useEffect(() => {
     if (!visible) return;
 
-    const trimmedQuery = query.trim();
+    // Usar query com debounce para evitar buscas excessivas
+    const trimmedQuery = debouncedQuery.trim();
     if (!trimmedQuery) {
       setResults([]);
       setIsSearching(false);
@@ -639,6 +645,7 @@ export function ProjectSearchModal({
     let cancelled = false;
     setIsSearching(true);
 
+    // Reduzir timeout pois já temos debounce
     const timeoutId = setTimeout(() => {
       void searchWorkspace(
         rootDirectoryUri,
@@ -665,26 +672,25 @@ export function ProjectSearchModal({
             setIsSearching(false);
           }
         });
-    }, 180);
+    }, 50);
 
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
     };
   }, [
+    debouncedQuery,
     caseSensitive,
-    openFileContentByPath,
-    query,
-    refreshToken,
-    rootDirectoryUri,
-    visible,
     wholeWord,
+    rootDirectoryUri,
+    openFileContentByPath,
+    visible,
   ]);
 
   useEffect(() => {
     setPendingPlan(null);
     setSelectedChangeIds([]);
-  }, [caseSensitive, query, replacement, wholeWord]);
+  }, [caseSensitive, debouncedQuery, replacement, wholeWord]);
 
   const handleOpenResult = useCallback(
     async (result: WorkspaceSearchResult) => {
