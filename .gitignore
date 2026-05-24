@@ -2,66 +2,62 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Build outputs
 dist/
 build/
-*.js.map
-*.ts.map
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
+target/
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py.class
 .Python
-*.so
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.*
+.env.local
+.python-version
+.python-history
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
 
-# Temporary files
-*.tmp
-*.temp
+# Logs
+*.log
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Testing
-.mypy_cache/
-.pytest_cache/
-.nyc_output/
-coverage/
-
-# Runtime
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# System
-*.un~
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
 *~
+*.tmp
+*.temp
 
-# Mobile
-*.ipa
-*.apk
-*.aab
+# Environment specific
+.env
+.env.local
+*.env
+*.env.*
 
-# Compression
+# Compressed files
 *.zip
 *.gz
 *.tar
